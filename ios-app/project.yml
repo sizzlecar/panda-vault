@@ -1,0 +1,52 @@
+name: PandaVault
+options:
+  bundleIdPrefix: com.pandavault
+  deploymentTarget:
+    iOS: "17.0"
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: 1
+
+targets:
+  PandaVault:
+    type: application
+    platform: iOS
+    sources:
+      - path: PandaVault
+    settings:
+      base:
+        INFOPLIST_FILE: PandaVault/Resources/Info.plist
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        PRODUCT_BUNDLE_IDENTIFIER: com.pandavault.app
+        TARGETED_DEVICE_FAMILY: "1"
+        SUPPORTS_XR_DESIGNED_FOR: false
+    info:
+      path: PandaVault/Resources/Info.plist
+      properties:
+        CFBundleName: PandaVault
+        CFBundleDisplayName: "Panda Vault"
+        CFBundleShortVersionString: "1.0.0"
+        CFBundleVersion: "1"
+        UILaunchScreen:
+          UIColorName: ""
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        NSPhotoLibraryUsageDescription: "需要访问相册以浏览和上传视频素材"
+        NSPhotoLibraryAddUsageDescription: "需要保存视频到相册以便在剪影中使用"
+        NSLocalNetworkUsageDescription: "需要访问局域网连接家庭媒体服务器"
+        NSBonjourServices:
+          - "_pandavault._tcp"
+          - "_http._tcp"
+        BGTaskSchedulerPermittedIdentifiers:
+          - "com.pandavault.sync"
+        UIBackgroundModes:
+          - fetch
+          - processing

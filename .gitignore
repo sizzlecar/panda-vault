@@ -1,0 +1,52 @@
+# Rust
+backend/target/
+backend/.sqlx/
+
+# iOS
+ios-app/build/
+ios-app/PandaVault.xcodeproj/xcuserdata/
+ios-app/PandaVault.xcodeproj/project.xcworkspace/xcuserdata/
+ios-app/.build/
+
+# Data & Storage
+media_storage/
+postgres_data/
+ai_cache/
+
+# Environment & Secrets
+.env
+*.env.local
+deploy/start.bat
+
+# Docker
+docker-compose.override.yml
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Python / AI service (不上传)
+ai-service/
+*.pyc
+
+# Old Flutter mobile (replaced by SwiftUI ios-app)
+mobile/
+
+# Test assets
+assert/
+
+# Samba config
+samba/
+
+# Temp
+*.part
+/tmp/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log

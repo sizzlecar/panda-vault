@@ -1,0 +1,488 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		06E3DF727A4E375D1D83D7AD /* UploadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78D270CA190879A9F0B046E9 /* UploadManager.swift */; };
+		177D518F0E33FBA66032D978 /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9CAAA06C9B5E48B4F4DCB17 /* APIService.swift */; };
+		2D597EFA88F78B0C400DB026 /* GalleryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39645935F02BA2D5E9F2790B /* GalleryView.swift */; };
+		2D753E460B8FABFDDECBBA50 /* PandaVaultApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43ADA517816152615440546D /* PandaVaultApp.swift */; };
+		2FC5A9E92C66259B7EAF559B /* Folder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F98DD37E96545FEB0CA7EF9 /* Folder.swift */; };
+		38A483D483BD4EB9FBA34F9F /* UploadView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38E2D4A05A3D490813EA0954 /* UploadView.swift */; };
+		45E87B7572AD5698160CC7E7 /* BonjourBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E79E82426569E0D010E107D /* BonjourBrowser.swift */; };
+		4EFCFB647111F90AEC32FDEA /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4217984CDFF4D0A6CFA0A72 /* SettingsView.swift */; };
+		5FF94CD3AF4B6B58432EFF37 /* BackgroundSyncManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9310406502855EAD8180F719 /* BackgroundSyncManager.swift */; };
+		69A899862D6B5714E1F896C9 /* DownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C6B01EFFB3248C3DCB738D8 /* DownloadManager.swift */; };
+		7E035FA7E73B8F8FA1B72257 /* Asset.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEF197138072CC68AB52D639 /* Asset.swift */; };
+		86FE31542656B2560FCB0213 /* FolderDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53E83E013626C8067B67210B /* FolderDetailView.swift */; };
+		9C6680DF6B558F37E8CDD4EF /* PhotoLibraryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF8939B2D186E19667C038A5 /* PhotoLibraryService.swift */; };
+		A28912987517E846D89C5F74 /* AssetThumbnail.swift in Sources */ = {isa = PBXBuildFile; fileRef = A42D159C80C138B6EFFA6BF2 /* AssetThumbnail.swift */; };
+		AF484C3ABADB27FDE4F50ECE /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7268F26941B8C7629FD1C7B6 /* AppState.swift */; };
+		B6717616DE470F5F9A3B8A13 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C459592961D64B41B4E88FB7 /* Assets.xcassets */; };
+		D67629AB46D471F59BA541A8 /* AssetDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39DB5E911B42D7BADDC91F51 /* AssetDetailView.swift */; };
+		D83B1F2997435CC77724655C /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40A5487E62E77F2C531BEF4B /* ContentView.swift */; };
+		E43B79D203D9277EDB78E1EF /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = C760A2FC8090E91B047AF6B6 /* Theme.swift */; };
+		EAF45DBC63FE4B86BBC6ECF9 /* HealthResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 292E0667F303386093116697 /* HealthResponse.swift */; };
+		F4EE49C82A5FDEB0661A5626 /* GalleryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3689C5DEE8DB231B932B5CD /* GalleryViewModel.swift */; };
+		F9C922D3A9853F24853993A0 /* UploadSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5B3AEEC77D97014B69E14E8 /* UploadSession.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		04090C10A72F3B3C12246590 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		292E0667F303386093116697 /* HealthResponse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthResponse.swift; sourceTree = "<group>"; };
+		38E2D4A05A3D490813EA0954 /* UploadView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UploadView.swift; sourceTree = "<group>"; };
+		39645935F02BA2D5E9F2790B /* GalleryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GalleryView.swift; sourceTree = "<group>"; };
+		39DB5E911B42D7BADDC91F51 /* AssetDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssetDetailView.swift; sourceTree = "<group>"; };
+		40A5487E62E77F2C531BEF4B /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		43ADA517816152615440546D /* PandaVaultApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PandaVaultApp.swift; sourceTree = "<group>"; };
+		53E83E013626C8067B67210B /* FolderDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderDetailView.swift; sourceTree = "<group>"; };
+		7268F26941B8C7629FD1C7B6 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		78D270CA190879A9F0B046E9 /* UploadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UploadManager.swift; sourceTree = "<group>"; };
+		9310406502855EAD8180F719 /* BackgroundSyncManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundSyncManager.swift; sourceTree = "<group>"; };
+		9C6B01EFFB3248C3DCB738D8 /* DownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadManager.swift; sourceTree = "<group>"; };
+		9E79E82426569E0D010E107D /* BonjourBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BonjourBrowser.swift; sourceTree = "<group>"; };
+		9F98DD37E96545FEB0CA7EF9 /* Folder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Folder.swift; sourceTree = "<group>"; };
+		A42D159C80C138B6EFFA6BF2 /* AssetThumbnail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssetThumbnail.swift; sourceTree = "<group>"; };
+		BF8939B2D186E19667C038A5 /* PhotoLibraryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoLibraryService.swift; sourceTree = "<group>"; };
+		C3689C5DEE8DB231B932B5CD /* GalleryViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GalleryViewModel.swift; sourceTree = "<group>"; };
+		C459592961D64B41B4E88FB7 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		C760A2FC8090E91B047AF6B6 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		E5144C57BD849EC9B141765E /* PandaVault.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PandaVault.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		E9CAAA06C9B5E48B4F4DCB17 /* APIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIService.swift; sourceTree = "<group>"; };
+		EEF197138072CC68AB52D639 /* Asset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Asset.swift; sourceTree = "<group>"; };
+		F4217984CDFF4D0A6CFA0A72 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		F5B3AEEC77D97014B69E14E8 /* UploadSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UploadSession.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		0A79347523CDDBB6FFB2923C /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				EEF197138072CC68AB52D639 /* Asset.swift */,
+				9F98DD37E96545FEB0CA7EF9 /* Folder.swift */,
+				292E0667F303386093116697 /* HealthResponse.swift */,
+				F5B3AEEC77D97014B69E14E8 /* UploadSession.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		150A215FBC70C6D22F6C48B0 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				C459592961D64B41B4E88FB7 /* Assets.xcassets */,
+				04090C10A72F3B3C12246590 /* Info.plist */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		3B5ED999742E7E63EA5134B0 /* Utils */ = {
+			isa = PBXGroup;
+			children = (
+				C760A2FC8090E91B047AF6B6 /* Theme.swift */,
+			);
+			path = Utils;
+			sourceTree = "<group>";
+		};
+		453F3F8FDE1F21BFC149A3DF /* Gallery */ = {
+			isa = PBXGroup;
+			children = (
+				53E83E013626C8067B67210B /* FolderDetailView.swift */,
+				39645935F02BA2D5E9F2790B /* GalleryView.swift */,
+			);
+			path = Gallery;
+			sourceTree = "<group>";
+		};
+		47424837AB625BDD6464BD91 /* Upload */ = {
+			isa = PBXGroup;
+			children = (
+				38E2D4A05A3D490813EA0954 /* UploadView.swift */,
+			);
+			path = Upload;
+			sourceTree = "<group>";
+		};
+		5C26A4387AC26A691CED42BB /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				6C1CC0F0CDBBC29D829FF5EB /* Components */,
+				EB4104E1EEA916B323862394 /* Detail */,
+				453F3F8FDE1F21BFC149A3DF /* Gallery */,
+				F55AE1F378C4146B4193D66F /* Settings */,
+				47424837AB625BDD6464BD91 /* Upload */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		6C1CC0F0CDBBC29D829FF5EB /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				A42D159C80C138B6EFFA6BF2 /* AssetThumbnail.swift */,
+			);
+			path = Components;
+			sourceTree = "<group>";
+		};
+		8F488449BAB03C8A26C4A9D9 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				7268F26941B8C7629FD1C7B6 /* AppState.swift */,
+				40A5487E62E77F2C531BEF4B /* ContentView.swift */,
+				43ADA517816152615440546D /* PandaVaultApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		A51600CA1EF9F613C431C91D /* PandaVault */ = {
+			isa = PBXGroup;
+			children = (
+				8F488449BAB03C8A26C4A9D9 /* App */,
+				0A79347523CDDBB6FFB2923C /* Models */,
+				150A215FBC70C6D22F6C48B0 /* Resources */,
+				EB459437F6462EAF56111857 /* Services */,
+				3B5ED999742E7E63EA5134B0 /* Utils */,
+				E97F52F4480C65307EB793CD /* ViewModels */,
+				5C26A4387AC26A691CED42BB /* Views */,
+			);
+			path = PandaVault;
+			sourceTree = "<group>";
+		};
+		A5FC59BAAC91CCB1186109E9 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				E5144C57BD849EC9B141765E /* PandaVault.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		E97F52F4480C65307EB793CD /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				C3689C5DEE8DB231B932B5CD /* GalleryViewModel.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		EB4104E1EEA916B323862394 /* Detail */ = {
+			isa = PBXGroup;
+			children = (
+				39DB5E911B42D7BADDC91F51 /* AssetDetailView.swift */,
+			);
+			path = Detail;
+			sourceTree = "<group>";
+		};
+		EB459437F6462EAF56111857 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				E9CAAA06C9B5E48B4F4DCB17 /* APIService.swift */,
+				9310406502855EAD8180F719 /* BackgroundSyncManager.swift */,
+				9E79E82426569E0D010E107D /* BonjourBrowser.swift */,
+				9C6B01EFFB3248C3DCB738D8 /* DownloadManager.swift */,
+				BF8939B2D186E19667C038A5 /* PhotoLibraryService.swift */,
+				78D270CA190879A9F0B046E9 /* UploadManager.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		F55AE1F378C4146B4193D66F /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				F4217984CDFF4D0A6CFA0A72 /* SettingsView.swift */,
+			);
+			path = Settings;
+			sourceTree = "<group>";
+		};
+		F64C0245705B6E789ADBE388 = {
+			isa = PBXGroup;
+			children = (
+				A51600CA1EF9F613C431C91D /* PandaVault */,
+				A5FC59BAAC91CCB1186109E9 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		4E30D767888DB7EA351F5588 /* PandaVault */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B000325E9222114BED10FE7B /* Build configuration list for PBXNativeTarget "PandaVault" */;
+			buildPhases = (
+				3BCB6919030F5EEF2BBC9AEF /* Sources */,
+				AB3A654E06D2B0049A04CBC0 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = PandaVault;
+			packageProductDependencies = (
+			);
+			productName = PandaVault;
+			productReference = E5144C57BD849EC9B141765E /* PandaVault.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		892AB5EE4EBF77E962272DFC /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					4E30D767888DB7EA351F5588 = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = BD90E86705C1FE9FB893F0C9 /* Build configuration list for PBXProject "PandaVault" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = F64C0245705B6E789ADBE388;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = A5FC59BAAC91CCB1186109E9 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				4E30D767888DB7EA351F5588 /* PandaVault */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		AB3A654E06D2B0049A04CBC0 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B6717616DE470F5F9A3B8A13 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		3BCB6919030F5EEF2BBC9AEF /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				177D518F0E33FBA66032D978 /* APIService.swift in Sources */,
+				AF484C3ABADB27FDE4F50ECE /* AppState.swift in Sources */,
+				7E035FA7E73B8F8FA1B72257 /* Asset.swift in Sources */,
+				D67629AB46D471F59BA541A8 /* AssetDetailView.swift in Sources */,
+				A28912987517E846D89C5F74 /* AssetThumbnail.swift in Sources */,
+				5FF94CD3AF4B6B58432EFF37 /* BackgroundSyncManager.swift in Sources */,
+				45E87B7572AD5698160CC7E7 /* BonjourBrowser.swift in Sources */,
+				D83B1F2997435CC77724655C /* ContentView.swift in Sources */,
+				69A899862D6B5714E1F896C9 /* DownloadManager.swift in Sources */,
+				2FC5A9E92C66259B7EAF559B /* Folder.swift in Sources */,
+				86FE31542656B2560FCB0213 /* FolderDetailView.swift in Sources */,
+				2D597EFA88F78B0C400DB026 /* GalleryView.swift in Sources */,
+				F4EE49C82A5FDEB0661A5626 /* GalleryViewModel.swift in Sources */,
+				EAF45DBC63FE4B86BBC6ECF9 /* HealthResponse.swift in Sources */,
+				2D753E460B8FABFDDECBBA50 /* PandaVaultApp.swift in Sources */,
+				9C6680DF6B558F37E8CDD4EF /* PhotoLibraryService.swift in Sources */,
+				4EFCFB647111F90AEC32FDEA /* SettingsView.swift in Sources */,
+				E43B79D203D9277EDB78E1EF /* Theme.swift in Sources */,
+				06E3DF727A4E375D1D83D7AD /* UploadManager.swift in Sources */,
+				F9C922D3A9853F24853993A0 /* UploadSession.swift in Sources */,
+				38A483D483BD4EB9FBA34F9F /* UploadView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		085B60D5AAB9CE6D2CBA7673 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = 47HJ8X7954;
+				INFOPLIST_FILE = PandaVault/Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.pandavault.app;
+				SDKROOT = iphoneos;
+				SUPPORTS_XR_DESIGNED_FOR = NO;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		36ACAAC8567088D4BB6BF180 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = 47HJ8X7954;
+				INFOPLIST_FILE = PandaVault/Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.pandavault.app;
+				SDKROOT = iphoneos;
+				SUPPORTS_XR_DESIGNED_FOR = NO;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		59996FA1A42E37D5CB180B85 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.9;
+			};
+			name = Debug;
+		};
+		C7309A3E44D71521005BE7BF /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.9;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		B000325E9222114BED10FE7B /* Build configuration list for PBXNativeTarget "PandaVault" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				36ACAAC8567088D4BB6BF180 /* Debug */,
+				085B60D5AAB9CE6D2CBA7673 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		BD90E86705C1FE9FB893F0C9 /* Build configuration list for PBXProject "PandaVault" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				59996FA1A42E37D5CB180B85 /* Debug */,
+				C7309A3E44D71521005BE7BF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 892AB5EE4EBF77E962272DFC /* Project object */;
+}

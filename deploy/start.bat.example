@@ -1,0 +1,30 @@
+@echo off
+chcp 65001 >nul
+title PandaVault Server
+
+:: ============ 修改以下配置 ============
+set STORAGE_ROOT=D:\PandaVault\storage
+set DATABASE_URL=postgres://YOUR_USER:YOUR_PASSWORD@localhost:5432/mediadb
+set BIND_ADDR=0.0.0.0:8080
+set AI_SERVICE_URL=http://127.0.0.1:8000
+set FFMPEG_BIN=ffmpeg
+set FFPROBE_BIN=ffprobe
+set JOB_POLL_INTERVAL_MS=500
+
+:: ============ 以下不用改 ============
+set RAW_DIR=%STORAGE_ROOT%\raw
+set PROXIES_DIR=%STORAGE_ROOT%\proxies
+set TEMP_DIR=%STORAGE_ROOT%\.temp
+set ALBUMS_DIR=%STORAGE_ROOT%\raw\albums
+set INBOX_DIR=%STORAGE_ROOT%\raw\inbox
+set TRASH_DIR=%STORAGE_ROOT%\raw\.trash
+
+mkdir "%RAW_DIR%" 2>nul
+mkdir "%PROXIES_DIR%" 2>nul
+mkdir "%TEMP_DIR%" 2>nul
+mkdir "%ALBUMS_DIR%" 2>nul
+mkdir "%INBOX_DIR%" 2>nul
+mkdir "%TRASH_DIR%" 2>nul
+
+panda-vault-backend.exe
+pause
