@@ -122,7 +122,7 @@ async fn run_scan(
 
     // 第一遍：计数
     let mut total = 0i32;
-    for entry in WalkDir::new(&base_dir).into_iter().filter_map(|e| e.ok()) {
+    for entry in WalkDir::new(&base_dir).follow_links(true).into_iter().filter_map(|e| e.ok()) {
         if entry.file_type().is_file() && is_media_file(entry.path()) {
             total += 1;
         }
@@ -144,7 +144,7 @@ async fn run_scan(
     // albums 的根路径，用于计算相对路径
     let albums_base = PathBuf::from(&vol.base_path).join("raw/albums");
 
-    for entry in WalkDir::new(&base_dir).into_iter().filter_map(|e| e.ok()) {
+    for entry in WalkDir::new(&base_dir).follow_links(true).into_iter().filter_map(|e| e.ok()) {
         if !entry.file_type().is_file() || !is_media_file(entry.path()) {
             continue;
         }
