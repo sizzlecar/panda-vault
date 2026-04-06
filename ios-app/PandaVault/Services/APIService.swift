@@ -145,31 +145,78 @@ final class APIService: Sendable {
         try await get("/api/folders/\(folderId)/assets?limit=\(limit)&offset=\(offset)")
     }
 
-    // MARK: - Upload (simple multipart)
+    // MARK: - Upload
 
-    func uploadFile(fileURL: URL, folderId: UUID? = nil) async throws -> Asset {
+    private let largeFileThreshold: Int64 = 50 * 1024 * 1024 // 50MB
+    private let chunkSize = 50 * 1024 * 1024 // 50MB — 局域网大分片
+
+    /// 小文件 Data 直传，大文件走分片上传
+    func uploadFile(fileURL: URL, folderId: UUID? = nil, shootAt: Date? = nil, onProgress: ((Double) -> Void)? = nil) async throws -> Asset {
+        let fileSize = (try? FileManager.default.attributesOfItem(atPath: fileURL.path)[.size] as? Int64) ?? 0
+
+        if fileSize < largeFileThreshold {
+            onProgress?(1.0)
+            return try await simpleUpload(fileURL: fileURL, folderId: folderId, shootAt: shootAt)
+        } else {
+            return try await chunkedUploadFile(fileURL: fileURL, fileSize: fileSize, folderId: folderId, onProgress: onProgress)
+        }
+    }
+
+    /// < 50MB: 整个读进内存，multipart 直传
+    private func simpleUpload(fileURL: URL, folderId: UUID?, shootAt: Date? = nil) async throws -> Asset {
         guard let url = makeURL("/api/upload") else { throw APIError.invalidURL }
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
 
         let boundary = UUID().uuidString
-        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        let filename = fileURL.lastPathComponent
+        let fileData = try Data(contentsOf: fileURL)
 
-        let data = try Data(contentsOf: fileURL)
         var body = Data()
-
         if let fid = folderId {
             body.appendMultipart(boundary: boundary, name: "folder_id", value: fid.uuidString)
         }
-        body.appendMultipart(boundary: boundary, name: "file", filename: fileURL.lastPathComponent, data: data)
+        if let shootAt {
+            body.appendMultipart(boundary: boundary, name: "shoot_at", value: "\(shootAt.timeIntervalSince1970)")
+        }
+        body.appendMultipart(boundary: boundary, name: "file", filename: filename, data: fileData)
         body.append("--\(boundary)--\r\n".data(using: .utf8)!)
 
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         request.httpBody = body
+        request.timeoutInterval = 3600
 
         let (responseData, response) = try await session.data(for: request)
         try validateResponse(response)
-        let wrapper = try decoder.decode(UploadWrapper.self, from: responseData)
-        return wrapper.asset
+        return try decoder.decode(UploadWrapper.self, from: responseData).asset
+    }
+
+    /// >= 50MB: 分片上传，带进度回调
+    private func chunkedUploadFile(fileURL: URL, fileSize: Int64, folderId: UUID?, onProgress: ((Double) -> Void)? = nil) async throws -> Asset {
+        let filename = fileURL.lastPathComponent
+        let initResp = try await initChunkedUpload(filename: filename, fileSize: fileSize)
+
+        let offsetResp = try await queryUploadOffset(uploadId: initResp.uploadId)
+        var currentOffset = offsetResp.offset
+
+        let handle = try FileHandle(forReadingFrom: fileURL)
+        defer { try? handle.close() }
+
+        if currentOffset > 0 {
+            try handle.seek(toOffset: UInt64(currentOffset))
+            onProgress?(Double(currentOffset) / Double(fileSize))
+        }
+
+        while currentOffset < fileSize {
+            let readSize = min(Int(fileSize - currentOffset), chunkSize)
+            guard let chunk = try handle.read(upToCount: readSize), !chunk.isEmpty else { break }
+            try await uploadChunk(uploadId: initResp.uploadId, offset: currentOffset, chunk: chunk)
+            currentOffset += Int64(chunk.count)
+            onProgress?(Double(currentOffset) / Double(fileSize))
+        }
+
+        let result = try await completeChunkedUpload(uploadId: initResp.uploadId)
+        return try await getAsset(id: result.assetId)
     }
 
     // MARK: - Chunked Upload
@@ -226,6 +273,12 @@ final class APIService: Sendable {
 
     func downloadURL(for asset: Asset) -> URL? {
         URL(string: "\(baseURL)/api/assets/\(asset.id)/download")
+    }
+
+    /// 原始文件直接访问（支持 Range 请求，用于视频流式播放）
+    func rawURL(for asset: Asset) -> URL? {
+        let path = asset.filePath.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? asset.filePath
+        return URL(string: "\(baseURL)\(path)")
     }
 
     func folderCoverURL(for folder: Folder) -> URL? {

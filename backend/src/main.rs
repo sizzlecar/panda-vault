@@ -6,8 +6,10 @@ mod db;
 mod folder;
 mod jobs;
 mod media;
+mod scan;
 mod sync;
 mod timestamp;
+mod volume;
 mod web;
 
 use axum::{extract::DefaultBodyLimit, routing::get, Router};
@@ -69,14 +71,72 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!("AI 服务已配置: {}", url);
     }
 
+    // 初始化多卷存储
+    let default_vol_id = volume::ensure_default_volume(&pool, &cfg.storage_root).await?;
+    let vol_mgr = volume::VolumeManager::new(pool.clone());
+    // 确保默认卷目录结构
+    if let Ok(default_vol) = vol_mgr.get_volume(default_vol_id).await {
+        volume::ensure_volume_dirs(&default_vol).await?;
+    }
+    // 刷新磁盘空间
+    vol_mgr.refresh_disk_stats().await?;
+    tracing::info!("存储卷已初始化，默认卷: {}", default_vol_id);
+
     let app_state = db::AppState {
         cfg: cfg.clone(),
         pool,
         ai_client,
+        volumes: vol_mgr.clone(),
     };
 
     // 后台 worker：轮询任务队列并转码/提取元数据
     jobs::spawn_worker(app_state.clone());
+
+    // 启动时 + 定期清理过期临时文件（失败/超时的分片上传残留）
+    {
+        let pool_c = app_state.pool.clone();
+        let temp_dir = cfg.temp_dir.clone();
+        tokio::spawn(async move {
+            loop {
+                // 标记超过 1 小时仍在 uploading 的会话为 failed
+                let _ = sqlx::query(
+                    "UPDATE upload_sessions SET status = 'failed' WHERE status = 'uploading' AND created_at < NOW() - INTERVAL '1 hour'"
+                ).execute(&pool_c).await;
+
+                // 删除对应的 .part 文件
+                if let Ok(mut entries) = tokio::fs::read_dir(&temp_dir).await {
+                    while let Ok(Some(entry)) = entries.next_entry().await {
+                        let path = entry.path();
+                        if path.extension().and_then(|e| e.to_str()) == Some("part") {
+                            // 超过 2 小时的临时文件直接删
+                            if let Ok(meta) = tokio::fs::metadata(&path).await {
+                                if let Ok(modified) = meta.modified() {
+                                    if modified.elapsed().unwrap_or_default() > std::time::Duration::from_secs(7200) {
+                                        tracing::info!("清理过期临时文件: {}", path.display());
+                                        let _ = tokio::fs::remove_file(&path).await;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                tokio::time::sleep(tokio::time::Duration::from_secs(300)).await; // 每 5 分钟检查
+            }
+        });
+    }
+
+    // 磁盘空间定时检查（每 60 秒）
+    {
+        let vm = vol_mgr.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+                if let Err(e) = vm.refresh_disk_stats().await {
+                    tracing::warn!("磁盘空间检查失败: {e}");
+                }
+            }
+        });
+    }
 
     // Bonjour mDNS 广播，让 iOS App 自动发现
     let port = cfg.bind_addr.split(':').last()

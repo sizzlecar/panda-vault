@@ -162,37 +162,36 @@ async fn try_run_transcode_job(state: &AppState) -> anyhow::Result<bool> {
         .await?;
     }
 
-    // 生成 proxy
+    // 生成 proxy（图片转 webp，视频跳过——局域网直接播原始文件）
     let (yyyy, mm) = {
         let dt = asset.created_at.unwrap_or_else(|| Utc::now().naive_utc());
         (dt.date().year(), dt.date().month())
     };
 
     let ext = guess_proxy_ext(&input_abs);
-    let proxy_rel = format!("/proxies/{:04}/{:02}/{}_720p.{ext}", yyyy, mm, job.asset_id);
-    let proxy_abs = state.cfg.resolve_under_root(&proxy_rel);
-    Config::ensure_parent(&proxy_abs)?;
+    let is_video = ext != "webp";
 
-    let transcode_res = if ext == "webp" {
-        transcode_image_to_webp(&state.cfg, &input_abs, &proxy_abs).await
+    let transcode_res = if is_video {
+        // 视频不转码，直接标记成功，播放时用原始文件
+        Ok(())
     } else {
-        transcode_video_to_720p(&state.cfg, &input_abs, &proxy_abs).await
+        let proxy_rel = format!("/proxies/{:04}/{:02}/{}_720p.{ext}", yyyy, mm, job.asset_id);
+        let proxy_abs = state.cfg.resolve_under_root(&proxy_rel);
+        Config::ensure_parent(&proxy_abs)?;
+        let res = transcode_image_to_webp(&state.cfg, &input_abs, &proxy_abs).await;
+        if res.is_ok() {
+            sqlx::query("UPDATE assets SET proxy_path = $2 WHERE id = $1")
+                .bind(job.asset_id)
+                .bind(&proxy_rel)
+                .execute(&state.pool)
+                .await?;
+        }
+        res
     };
 
     match transcode_res {
         Ok(()) => {
-            sqlx::query(
-                r#"
-                UPDATE assets
-                SET proxy_path = $2
-                WHERE id = $1
-                "#,
-            )
-            .bind(job.asset_id)
-            .bind(&proxy_rel)
-            .execute(&state.pool)
-            .await?;
-
+            // proxy_path 已在上面的图片分支更新，视频不需要 proxy
             mark_transcode_succeeded(&state.pool, job.id).await?;
 
             // 第三阶段：转码成功后自动创建 embedding 任务
@@ -316,25 +315,34 @@ async fn transcode_video_to_720p(cfg: &Config, input: &std::path::Path, output: 
 }
 
 async fn transcode_image_to_webp(cfg: &Config, input: &std::path::Path, output: &std::path::Path) -> anyhow::Result<()> {
-    let status = tokio::process::Command::new(&cfg.ffmpeg_bin)
-        .arg("-y")
-        .arg("-hide_banner")
-        .arg("-loglevel")
-        .arg("error")
-        .arg("-i")
+    // 优先 sips（macOS，完美支持 HEIC/HDR），失败回退 ffmpeg
+    let sips_ok = tokio::process::Command::new("sips")
+        .arg("--resampleWidth").arg("1280")
+        .arg("-s").arg("format").arg("jpeg")
         .arg(input)
-        .arg("-vf")
-        .arg("scale='min(1280,iw)':-2")
-        .arg("-c:v")
-        .arg("libwebp")
-        .arg("-q:v")
-        .arg("80")
-        .arg(output)
+        .arg("--out").arg(output)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .status()
-        .await?;
+        .await
+        .map(|s| s.success())
+        .unwrap_or(false);
 
-    if !status.success() {
-        anyhow::bail!("ffmpeg 图片转码失败: exit={status}");
+    if !sips_ok {
+        let status = tokio::process::Command::new(&cfg.ffmpeg_bin)
+            .arg("-y")
+            .arg("-hide_banner")
+            .arg("-loglevel").arg("error")
+            .arg("-i").arg(input)
+            .arg("-vf").arg("scale='min(1280,iw)':-2")
+            .arg("-c:v").arg("libwebp")
+            .arg("-q:v").arg("80")
+            .arg(output)
+            .status()
+            .await?;
+        if !status.success() {
+            anyhow::bail!("ffmpeg 图片转码失败: exit={status}");
+        }
     }
     Ok(())
 }

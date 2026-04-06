@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use crate::{api::json_err, db::AppState, media};
 
-const DEFAULT_CHUNK_SIZE: i32 = 5 * 1024 * 1024; // 5MB
+const DEFAULT_CHUNK_SIZE: i32 = 50 * 1024 * 1024; // 50MB — 局域网大分片
 
 // ============ Request / Response ============
 
@@ -168,6 +168,7 @@ pub async fn upload_chunk(
 }
 
 /// POST /api/upload/:id/complete — 完成上传，触发入库
+/// 大文件不读进内存：流式算 hash，直接 rename 到目标位置
 pub async fn complete_upload(
     State(state): State<AppState>,
     Path(upload_id): Path<Uuid>,
@@ -182,35 +183,113 @@ pub async fn complete_upload(
         return json_err(StatusCode::CONFLICT, "上传已完成或已过期").into_response();
     }
 
+    tracing::info!("分片上传 complete 开始: {} ({})", session.filename, upload_id);
+
     let temp_path = state.cfg.temp_dir.join(format!("{}.part", upload_id));
 
-    // 读取文件计算 hash 并入库
-    let data = match tokio::fs::read(&temp_path).await {
-        Ok(d) => d,
-        Err(e) => return json_err(StatusCode::INTERNAL_SERVER_ERROR, format!("读取临时文件失败: {e}")).into_response(),
+    // 先 rename 到目标位置（瞬间完成），hash 和去重放后台
+    let safe_name = media::sanitize_filename_pub(&session.filename);
+    let asset_id = Uuid::new_v4();
+    let now = chrono::Utc::now();
+    let (yyyy, mm) = (chrono::Datelike::year(&now), chrono::Datelike::month(&now));
+    let raw_rel = format!("/raw/inbox/{:04}/{:02}/{}_{}", yyyy, mm, asset_id, safe_name);
+    let raw_abs = state.cfg.resolve_under_root(&raw_rel);
+    crate::config::Config::ensure_parent(&raw_abs).unwrap_or_default();
+
+    if let Err(e) = tokio::fs::rename(&temp_path, &raw_abs).await {
+        tracing::warn!("rename 失败，尝试 copy: {e}");
+        if let Err(e2) = tokio::fs::copy(&temp_path, &raw_abs).await {
+            return json_err(StatusCode::INTERNAL_SERVER_ERROR, format!("文件落盘失败: {e2}")).into_response();
+        }
+        let _ = tokio::fs::remove_file(&temp_path).await;
+    }
+
+    // 先用占位 hash 入库（后台 transcode job 会补算真实 hash）
+    let placeholder_hash = format!("pending_{}", asset_id);
+    let file_size = session.file_size;
+
+    let new_asset = media::NewAsset {
+        id: asset_id,
+        filename: safe_name.clone(),
+        file_path: raw_rel.clone(),
+        proxy_path: None,
+        thumb_path: None,
+        file_hash: placeholder_hash,
+        size_bytes: file_size,
+        shoot_at: None,
+        duration_sec: None,
+        width: None,
+        height: None,
+        uploaded_by: None,
     };
 
-    // 标记完成
-    let _ = sqlx::query("UPDATE upload_sessions SET status = 'completed', updated_at = NOW() WHERE id = $1")
-        .bind(upload_id)
-        .execute(&state.pool)
-        .await;
-
-    // 删除临时文件
-    let _ = tokio::fs::remove_file(&temp_path).await;
-
-    // 走正常入库流程
-    let bytes = axum::body::Bytes::from(data);
-    match media::ingest_upload_bytes(&state, bytes, &session.filename, None, None).await {
-        Ok(res) => (StatusCode::OK, Json(CompleteResponse {
-            asset_id: res.asset.id,
-            duplicate: res.deduped,
-        })).into_response(),
-        Err(e) => {
-            tracing::error!("分片上传入库失败 [{}]: {:#}", session.filename, e);
-            json_err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
-        }
+    if let Err(e) = crate::api::insert_asset_and_job(&state.pool, &new_asset).await {
+        tracing::error!("分片上传入库失败 [{}]: {:#}", safe_name, e);
+        return json_err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response();
     }
+
+    let _ = sqlx::query("UPDATE upload_sessions SET status = 'completed', updated_at = NOW() WHERE id = $1")
+        .bind(upload_id).execute(&state.pool).await;
+
+    tracing::info!("分片上传入库成功: {} ({} MB)", safe_name, file_size / 1024 / 1024);
+
+    // 后台算真实 hash（不阻塞响应）
+    let pool = state.pool.clone();
+    let raw_abs_bg = raw_abs.clone();
+    tokio::spawn(async move {
+        match stream_hash(&raw_abs_bg).await {
+            Ok((real_hash, _)) => {
+                // 检查去重
+                let dup: Option<(Uuid,)> = sqlx::query_as(
+                    "SELECT id FROM assets WHERE file_hash = $1 AND id != $2 AND is_deleted = FALSE LIMIT 1"
+                )
+                .bind(&real_hash)
+                .bind(asset_id)
+                .fetch_optional(&pool)
+                .await
+                .unwrap_or(None);
+
+                if let Some((dup_id,)) = dup {
+                    // 去重：删除刚入库的，保留旧的
+                    tracing::info!("后台去重命中: {} -> 已有 {}", asset_id, dup_id);
+                    let _ = sqlx::query("UPDATE assets SET is_deleted = TRUE WHERE id = $1")
+                        .bind(asset_id).execute(&pool).await;
+                    let _ = tokio::fs::remove_file(&raw_abs_bg).await;
+                } else {
+                    // 更新真实 hash
+                    let _ = sqlx::query("UPDATE assets SET file_hash = $2 WHERE id = $1")
+                        .bind(asset_id).bind(&real_hash).execute(&pool).await;
+                }
+            }
+            Err(e) => tracing::warn!("后台 hash 失败 [{}]: {}", asset_id, e),
+        }
+    });
+
+    (StatusCode::OK, Json(CompleteResponse {
+        asset_id,
+        duplicate: false,
+    })).into_response()
+}
+
+/// 流式计算文件 SHA256（同步 I/O + 1MB buffer，避免 async 开销）
+async fn stream_hash(path: &std::path::Path) -> anyhow::Result<(String, u64)> {
+    let path = path.to_owned();
+    tokio::task::spawn_blocking(move || {
+        use sha2::{Digest, Sha256};
+        use std::io::Read;
+        let mut file = std::fs::File::open(&path)?;
+        let mut hasher = Sha256::new();
+        let mut buf = vec![0u8; 1024 * 1024]; // 1MB buffer
+        let mut total: u64 = 0;
+        loop {
+            let n = file.read(&mut buf)?;
+            if n == 0 { break; }
+            hasher.update(&buf[..n]);
+            total += n as u64;
+        }
+        Ok((hex::encode(hasher.finalize()), total))
+    })
+    .await?
 }
 
 // ============ Helpers ============

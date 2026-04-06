@@ -58,9 +58,20 @@ pub fn routes(state: AppState) -> Router {
         .route("/api/folders/:id/assets", get(list_folder_assets))
         .route("/api/folders/:id/assets/:asset_id", post(add_asset_to_folder))
         .route("/api/folders/:id/assets/:asset_id", delete(remove_asset_from_folder))
+        // 存储卷管理
+        .route("/api/volumes", get(list_volumes).post(create_volume))
+        .route("/api/volumes/:id", get(get_volume_detail))
+        // 目录扫描
+        .route("/api/scan", post(start_scan))
+        .route("/api/scan/sessions", get(list_scan_sessions_api))
+        .route("/api/scan/:id", get(get_scan_session))
         .nest_service(
             "/proxies",
             tower_http::services::ServeDir::new(proxies_dir).append_index_html_on_directories(false),
+        )
+        .nest_service(
+            "/raw",
+            tower_http::services::ServeDir::new(state.cfg.raw_dir.clone()).append_index_html_on_directories(false),
         )
         .with_state(state)
 }
@@ -141,6 +152,7 @@ async fn upload(
     let mut device_id: Option<String> = None;
     let mut session_id: Option<Uuid> = None;
     let mut folder_id: Option<Uuid> = None;
+    let mut shoot_at: Option<NaiveDateTime> = None;
     let mut file_data: Option<(String, bytes::Bytes)> = None;
 
     // 解析 multipart 字段
@@ -177,6 +189,14 @@ async fn upload(
                     }
                 }
             }
+            Some("shoot_at") => {
+                if let Ok(text) = field.text().await {
+                    if let Ok(ts) = text.trim().parse::<f64>() {
+                        shoot_at = chrono::DateTime::from_timestamp(ts as i64, ((ts.fract()) * 1e9) as u32)
+                            .map(|dt| dt.naive_utc());
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -199,7 +219,7 @@ async fn upload(
         .await;
     }
 
-    let res = match media::ingest_upload_bytes(&state, bytes, &orig_name, device_id.as_deref(), folder_id).await {
+    let res = match media::ingest_upload_bytes(&state, bytes, &orig_name, device_id.as_deref(), folder_id, shoot_at).await {
         Ok(v) => v,
         Err(e) => {
             if let Some(sid) = session_id {
@@ -219,12 +239,17 @@ async fn upload(
         }
     };
 
-    // 关联到文件夹（无论是否去重；如果去重命中，也允许把已有资产"归类"到该文件夹）
-    // 注意：新上传的资产已经在 media::ingest_upload_bytes 中处理了文件夹关联
-    // 这里只处理去重命中的情况（需要把已有资产移动到新文件夹）
+    // 去重命中时：只添加文件夹关联（不移动文件），允许同一资产出现在多个文件夹
     if let Some(fid) = folder_id {
         if res.deduped {
-            let _ = folder::add_asset_to_folder(&state.pool, &state.cfg, fid, res.asset.id, device_id.as_deref()).await;
+            let _ = sqlx::query(
+                "INSERT INTO asset_folders (folder_id, asset_id, added_by) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING"
+            )
+            .bind(fid)
+            .bind(res.asset.id)
+            .bind(device_id.as_deref())
+            .execute(&state.pool)
+            .await;
         }
     }
 
@@ -1138,6 +1163,91 @@ async fn remove_asset_from_folder(
 ) -> Response {
     match folder::remove_asset_from_folder(&state.pool, &state.cfg, folder_id, asset_id).await {
         Ok(()) => (StatusCode::OK, Json(serde_json::json!({"removed": true}))).into_response(),
+        Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
+// ============ 存储卷管理 ============
+
+async fn list_volumes(State(state): State<AppState>) -> Response {
+    match state.volumes.all_volumes().await {
+        Ok(vols) => (StatusCode::OK, Json(vols)).into_response(),
+        Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+struct CreateVolumeRequest {
+    label: String,
+    base_path: String,
+    priority: Option<i32>,
+    min_free_bytes: Option<i64>,
+}
+
+async fn create_volume(
+    State(state): State<AppState>,
+    Json(req): Json<CreateVolumeRequest>,
+) -> Response {
+    match crate::volume::add_volume(
+        &state.pool,
+        &req.label,
+        &req.base_path,
+        req.priority.unwrap_or(0),
+        req.min_free_bytes.unwrap_or(5 * 1024 * 1024 * 1024),
+    )
+    .await
+    {
+        Ok(vol) => (StatusCode::OK, Json(vol)).into_response(),
+        Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
+async fn get_volume_detail(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Response {
+    match state.volumes.get_volume(id).await {
+        Ok(vol) => (StatusCode::OK, Json(vol)).into_response(),
+        Err(e) => json_err(StatusCode::NOT_FOUND, e.to_string()).into_response(),
+    }
+}
+
+// ============ 目录扫描 ============
+
+#[derive(Deserialize)]
+struct StartScanRequest {
+    volume_id: Uuid,
+    scan_path: Option<String>,
+}
+
+async fn start_scan(
+    State(state): State<AppState>,
+    Json(req): Json<StartScanRequest>,
+) -> Response {
+    match crate::scan::start_scan(state, req.volume_id, req.scan_path).await {
+        Ok(session_id) => (
+            StatusCode::ACCEPTED,
+            Json(serde_json::json!({"session_id": session_id})),
+        )
+            .into_response(),
+        Err(e) => json_err(StatusCode::BAD_REQUEST, e.to_string()).into_response(),
+    }
+}
+
+async fn get_scan_session(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Response {
+    match crate::scan::get_session(&state.pool, id).await {
+        Ok(Some(s)) => (StatusCode::OK, Json(s)).into_response(),
+        Ok(None) => json_err(StatusCode::NOT_FOUND, "扫描会话不存在").into_response(),
+        Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
+async fn list_scan_sessions_api(State(state): State<AppState>) -> Response {
+    match crate::scan::list_sessions(&state.pool).await {
+        Ok(sessions) => (StatusCode::OK, Json(sessions)).into_response(),
         Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
 }

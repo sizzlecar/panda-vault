@@ -49,11 +49,12 @@ pub struct IngestResult {
 /// 从字节数据上传（用于已读取的 multipart 数据）
 /// folder_id: 如果指定，直接落盘到 albums/<folder_fs_path>/ 下；否则落到 inbox/YYYY/MM/
 pub async fn ingest_upload_bytes(
-    state: &AppState, 
-    data: Bytes, 
-    orig_name: &str, 
+    state: &AppState,
+    data: Bytes,
+    orig_name: &str,
     device_id: Option<&str>,
     folder_id: Option<Uuid>,
+    shoot_at: Option<NaiveDateTime>,
 ) -> anyhow::Result<IngestResult> {
     let now = Utc::now();
     let (yyyy, mm) = (now.year(), now.month());
@@ -219,7 +220,7 @@ pub async fn ingest_upload_bytes(
         thumb_path,
         file_hash,
         size_bytes: size as i64,
-        shoot_at: None,
+        shoot_at,
         duration_sec: None,
         width: None,
         height: None,
@@ -250,6 +251,10 @@ pub async fn ingest_upload_bytes(
         deduped: false,
         asset: crate::api::AssetDto::from_row(row),
     })
+}
+
+pub fn sanitize_filename_pub(name: &str) -> String {
+    sanitize_filename(name)
 }
 
 fn sanitize_filename(name: &str) -> String {
@@ -330,7 +335,6 @@ async fn find_by_id(pool: &PgPool, id: Uuid) -> anyhow::Result<Option<crate::api
 }
 
 pub async fn try_generate_thumbnail(cfg: &Config, input: &std::path::Path, output: &std::path::Path) -> anyhow::Result<()> {
-    // 视频缩略图用 -ss 抽一帧；图片缩略图不能用 -ss（会跳过唯一帧，导致输出缺失）
     let ext = input
         .extension()
         .and_then(|s| s.to_str())
@@ -338,41 +342,61 @@ pub async fn try_generate_thumbnail(cfg: &Config, input: &std::path::Path, outpu
         .to_ascii_lowercase();
     let is_video = matches!(ext.as_str(), "mp4" | "mov" | "avi" | "mkv" | "webm" | "m4v");
 
-    let mut cmd = tokio::process::Command::new(&cfg.ffmpeg_bin);
-    cmd.arg("-y")
-        .arg("-hide_banner")
-        .arg("-loglevel")
-        .arg("error")
-        // 某些素材（尤其是 MJPEG/YUV 相关）会报：
-        // Non full-range YUV is non-standard, set strict_std_compliance to at most unofficial
-        .arg("-strict")
-        .arg("-2");
-
     if is_video {
-        cmd.arg("-ss").arg("00:00:01");
+        // 视频：ffmpeg 抽帧
+        let status = tokio::process::Command::new(&cfg.ffmpeg_bin)
+            .arg("-y")
+            .arg("-hide_banner")
+            .arg("-loglevel").arg("error")
+            .arg("-strict").arg("-2")
+            .arg("-ss").arg("00:00:01")
+            .arg("-i").arg(input)
+            .arg("-frames:v").arg("1")
+            .arg("-vf").arg("scale=512:-2:flags=bicubic,format=yuvj420p")
+            .arg("-q:v").arg("2")
+            .arg(output)
+            .status()
+            .await?;
+        if !status.success() {
+            anyhow::bail!("ffmpeg 缩略图生成失败: exit={status}");
+        }
+    } else {
+        // 图片：优先 sips（macOS 原生，完美支持 HEIC/HDR/P3），失败回退 ffmpeg
+        let sips_ok = tokio::process::Command::new("sips")
+            .arg("--resampleWidth").arg("512")
+            .arg("-s").arg("format").arg("jpeg")
+            .arg(input)
+            .arg("--out").arg(output)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .await
+            .map(|s| s.success())
+            .unwrap_or(false);
+
+        if !sips_ok {
+            // sips 不可用（非 macOS），回退 ffmpeg
+            let status = tokio::process::Command::new(&cfg.ffmpeg_bin)
+                .arg("-y")
+                .arg("-hide_banner")
+                .arg("-loglevel").arg("error")
+                .arg("-strict").arg("-2")
+                .arg("-i").arg(input)
+                .arg("-frames:v").arg("1")
+                .arg("-vf").arg("scale=512:-2:flags=bicubic,format=yuvj420p")
+                .arg("-q:v").arg("2")
+                .arg(output)
+                .status()
+                .await?;
+            if !status.success() {
+                anyhow::bail!("ffmpeg 缩略图生成失败: exit={status}");
+            }
+        }
     }
 
-    cmd.arg("-i")
-        .arg(input)
-        .arg("-frames:v")
-        .arg("1")
-        // 缩略图下采样 + 强制像素格式，提升兼容性 & 减小体积
-        .arg("-vf")
-        .arg("scale=512:-2:flags=bicubic,format=yuvj420p")
-        .arg("-q:v")
-        .arg("2")
-        .arg(output);
-
-    let status = cmd.status().await?;
-
-    if !status.success() {
-        anyhow::bail!("ffmpeg 缩略图生成失败: exit={status}");
-    }
-
-    // 双重校验：ffmpeg 偶尔可能 exit=0 但未生成文件（尤其是图片输入 + -ss 之类的场景）
     let meta = tokio::fs::metadata(output).await?;
     if meta.len() == 0 {
-        anyhow::bail!("ffmpeg 缩略图生成失败: 输出文件为空: {}", output.display());
+        anyhow::bail!("缩略图生成失败: 输出文件为空: {}", output.display());
     }
     Ok(())
 }

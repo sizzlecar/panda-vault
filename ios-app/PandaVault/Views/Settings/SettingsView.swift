@@ -2,210 +2,204 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject var appState: AppState
+    @ObservedObject var syncEngine = SyncEngine.shared
+
     @State private var serverInput = ""
     @State private var isTesting = false
-    @State private var testResult: TestResult?
-    @State private var autoSyncEnabled = UserDefaults.standard.bool(forKey: "autoSyncEnabled")
     @State private var folders: [Folder] = []
+    @State private var autoBackup = false
+
+    private static let lastSyncFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "MM-dd HH:mm"
+        return f
+    }()
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                PV.bg.ignoresSafeArea()
+            Form {
+                // MARK: - Server
+                Section {
+                    HStack {
+                        TextField("http://192.168.1.x:8080", text: $serverInput)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .keyboardType(.URL)
 
-                List {
-                    // 服务器
-                    Section {
+                        if appState.isConnected {
+                            PixelTag(text: "CONNECTED", color: PV.green)
+                        }
+                    }
+
+                    Button {
+                        Task { await testConnection() }
+                    } label: {
                         HStack {
-                            TextField("http://192.168.1.x:8080", text: $serverInput)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                                .keyboardType(.URL)
-                                .font(.system(.body, design: .monospaced))
+                            Spacer()
                             if isTesting {
                                 ProgressView().tint(PV.cyan)
                             } else {
-                                Button("TEST") { Task { await testConnection() } }
+                                Text("TEST")
+                                    .font(.system(.caption, design: .monospaced).bold())
+                                    .tracking(2)
+                            }
+                            Spacer()
+                        }
+                    }
+                    .disabled(serverInput.isEmpty || isTesting)
+                } header: {
+                    PixelSectionHeader(title: "SERVER")
+                }
+
+                // MARK: - Sync
+                Section {
+                    Toggle("自动备份", isOn: $autoBackup)
+                        .tint(PV.cyan)
+
+                    Picker("同步文件夹", selection: $syncEngine.syncFolderId) {
+                        Text("默认").tag(UUID?.none)
+                        ForEach(folders) { folder in
+                            Text(folder.name).tag(UUID?.some(folder.id))
+                        }
+                    }
+
+                    if syncEngine.isSyncing {
+                        // 同步进度详情
+                        VStack(spacing: 8) {
+                            HStack {
+                                Text("\(syncEngine.syncedCount)/\(syncEngine.totalToSync)")
                                     .font(.system(.caption, design: .monospaced).bold())
                                     .foregroundStyle(PV.cyan)
-                                    .disabled(serverInput.isEmpty)
-                            }
-                        }
-                        .listRowBackground(PV.cardBg)
-
-                        if let result = testResult {
-                            Label(result.message, systemImage: result.icon)
-                                .foregroundStyle(result.isSuccess ? PV.green : PV.pink)
-                                .font(.system(.caption, design: .monospaced))
-                                .listRowBackground(PV.cardBg)
-                        }
-
-                        if appState.isConnected {
-                            HStack {
-                                Text("STATUS")
-                                    .font(.system(.caption, design: .monospaced))
-                                    .foregroundStyle(PV.textMuted)
                                 Spacer()
-                                PixelTag(text: "CONNECTED", color: PV.green)
+                                if syncEngine.failedCount > 0 {
+                                    Text("\(syncEngine.failedCount) 失败")
+                                        .font(.system(.caption2, design: .monospaced))
+                                        .foregroundStyle(PV.orange)
+                                }
                             }
-                            .listRowBackground(PV.cardBg)
+
+                            if !syncEngine.currentFileName.isEmpty {
+                                Text(syncEngine.currentFileName)
+                                    .font(.system(.caption2, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                                ProgressView(value: syncEngine.currentProgress)
+                                    .tint(PV.cyan)
+                            }
                         }
-                    } header: {
-                        PixelSectionHeader(title: "服务器")
                     }
 
-                    // 同步
-                    Section {
-                        Toggle(isOn: $autoSyncEnabled) {
-                            Text("自动备份相册")
-                                .font(.system(.body, design: .monospaced))
-                        }
-                        .tint(PV.cyan)
-                        .onChange(of: autoSyncEnabled) { _, enabled in
-                            UserDefaults.standard.set(enabled, forKey: "autoSyncEnabled")
-                            if enabled { BackgroundSyncManager.shared.scheduleSync() }
-                        }
-                        .listRowBackground(PV.cardBg)
-
-                        // 同步目标文件夹
-                        Picker(selection: Binding(
-                            get: { SyncEngine.shared.syncFolderId },
-                            set: { SyncEngine.shared.syncFolderId = $0 }
-                        )) {
-                            Text("/ 根目录").tag(UUID?.none)
-                            ForEach(folders) { Text("/ \($0.name)").tag(Optional($0.id)) }
-                        } label: {
-                            Text("同步到")
-                                .font(.system(.body, design: .monospaced))
-                        }
-                        .listRowBackground(PV.cardBg)
-
-                        // 手动同步
-                        Button {
-                            Task { await SyncEngine.shared.performSync() }
-                        } label: {
-                            HStack {
+                    Button {
+                        Task { await syncEngine.performSync() }
+                    } label: {
+                        HStack {
+                            Spacer()
+                            if syncEngine.isSyncing {
+                                ProgressView().tint(PV.cyan)
+                                Text("同步中...")
+                                    .font(.system(.caption, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                                    .padding(.leading, 6)
+                            } else {
                                 Text("立即同步")
-                                    .font(.system(.body, design: .monospaced))
-                                Spacer()
-                                if SyncEngine.shared.isSyncing { ProgressView().tint(PV.cyan) }
+                                    .font(.system(.caption, design: .monospaced).bold())
+                                    .tracking(1)
                             }
+                            Spacer()
                         }
-                        .disabled(SyncEngine.shared.isSyncing)
-                        .listRowBackground(PV.cardBg)
-
-                        // 统计
-                        Group {
-                            statRow("相册总数", value: "\(SyncEngine.shared.totalInLibrary)")
-                            statRow("已同步", value: "\(SyncEngine.shared.syncedIds.count)", color: PV.green)
-                            statRow("待同步", value: "\(SyncEngine.shared.unsyncedCount)",
-                                    color: SyncEngine.shared.unsyncedCount > 0 ? PV.orange : PV.textMuted)
-                        }
-
-                        if let date = SyncEngine.shared.lastSyncDate {
-                            HStack {
-                                Text("上次同步")
-                                    .font(.system(.caption, design: .monospaced))
-                                    .foregroundStyle(PV.textMuted)
-                                Spacer()
-                                Text(date, style: .relative)
-                                    .font(.system(.caption, design: .monospaced))
-                                    .foregroundStyle(PV.textSecondary)
-                            }
-                            .listRowBackground(PV.cardBg)
-                        }
-
-                        if SyncEngine.shared.isSyncing {
-                            HStack {
-                                Text("SYNCING")
-                                    .font(.system(.caption, design: .monospaced))
-                                    .foregroundStyle(PV.textMuted)
-                                Spacer()
-                                PixelTag(text: "\(SyncEngine.shared.syncedCount)/\(SyncEngine.shared.totalToSync)", color: PV.cyan)
-                            }
-                            .listRowBackground(PV.cardBg)
-                        }
-
-                        if !SyncEngine.shared.lastSyncResult.isEmpty {
-                            Text(SyncEngine.shared.lastSyncResult)
-                                .font(.system(.caption2, design: .monospaced))
-                                .foregroundStyle(PV.textMuted)
-                                .listRowBackground(PV.cardBg)
-                        }
-                    } header: {
-                        PixelSectionHeader(title: "同步")
                     }
+                    .disabled(syncEngine.isSyncing || !appState.isConnected)
+                } header: {
+                    PixelSectionHeader(title: "SYNC")
+                }
 
-                    // 关于
-                    Section {
-                        statRow("VERSION", value: "1.0.0")
-                    } header: {
-                        PixelSectionHeader(title: "关于")
+                // MARK: - Stats
+                Section {
+                    statRow(label: "相册总数", value: "\(syncEngine.totalInLibrary)", color: PV.cyan)
+                    statRow(label: "已同步", value: "\(syncEngine.syncedIds.count)", color: PV.green)
+                    statRow(label: "待同步", value: "\(syncEngine.unsyncedCount)", color: PV.orange)
+                    statRow(label: "上次同步", value: lastSyncText, color: PV.pink)
+                }
+
+                // MARK: - About
+                Section {
+                    HStack {
+                        Text("VERSION")
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        PixelTag(text: "1.0.0", color: PV.cyan)
                     }
+                } header: {
+                    PixelSectionHeader(title: "ABOUT")
+                }
 
-                    // 断开
-                    if !appState.serverURL.isEmpty {
-                        Section {
-                            Button {
-                                appState.updateServerURL("")
-                                serverInput = ""
-                                testResult = nil
-                            } label: {
-                                Text("断开服务器")
-                                    .font(.system(.body, design: .monospaced))
-                                    .foregroundStyle(PV.pink)
-                                    .frame(maxWidth: .infinity)
-                            }
-                            .listRowBackground(PV.cardBg)
+                // MARK: - Disconnect
+                Section {
+                    Button(role: .destructive) {
+                        disconnect()
+                    } label: {
+                        HStack {
+                            Spacer()
+                            Text("断开连接")
+                                .font(.system(.caption, design: .monospaced).bold())
+                                .tracking(1)
+                            Spacer()
                         }
                     }
                 }
-                .scrollContentBackground(.hidden)
             }
             .navigationTitle("设置")
-            .onAppear { serverInput = appState.serverURL }
+            .navigationBarTitleDisplayMode(.inline)
             .task {
-                if appState.isConnected {
-                    folders = (try? await appState.api.getFolders()) ?? []
-                }
+                serverInput = appState.serverURL
+                await loadFolders()
             }
         }
     }
 
-    private func statRow(_ label: String, value: String, color: Color = PV.textSecondary) -> some View {
+    // MARK: - Helpers
+
+    private var lastSyncText: String {
+        guard let date = syncEngine.lastSyncDate else { return "从未" }
+        return Self.lastSyncFormatter.string(from: date)
+    }
+
+    private func statRow(label: String, value: String, color: Color) -> some View {
         HStack {
             Text(label)
                 .font(.system(.caption, design: .monospaced))
-                .foregroundStyle(PV.textMuted)
+                .foregroundStyle(.secondary)
             Spacer()
-            Text(value)
-                .font(.system(.caption, design: .monospaced).bold())
-                .foregroundStyle(color)
+            PixelTag(text: value, color: color)
         }
-        .listRowBackground(PV.cardBg)
     }
 
     private func testConnection() async {
         isTesting = true
         defer { isTesting = false }
-        let testAPI = APIService(baseURL: serverInput)
-        do {
-            let ok = try await testAPI.ping()
-            if ok {
-                testResult = TestResult(isSuccess: true, message: "CONNECTED")
-                appState.updateServerURL(serverInput)
-                appState.isConnected = true
-            } else {
-                testResult = TestResult(isSuccess: false, message: "BAD STATUS")
-            }
-        } catch {
-            testResult = TestResult(isSuccess: false, message: "FAILED")
+
+        appState.updateServerURL(serverInput)
+        await appState.checkConnection()
+        if appState.isConnected {
+            await loadFolders()
         }
     }
-}
 
-private struct TestResult {
-    let isSuccess: Bool
-    let message: String
-    var icon: String { isSuccess ? "checkmark.circle.fill" : "xmark.circle.fill" }
+    private func loadFolders() async {
+        guard appState.isConnected else { return }
+        do {
+            folders = try await appState.api.getFolders()
+        } catch {
+            folders = []
+        }
+    }
+
+    private func disconnect() {
+        appState.isConnected = false
+        appState.updateServerURL("")
+        serverInput = ""
+    }
 }

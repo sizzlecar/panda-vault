@@ -62,6 +62,8 @@ final class SyncEngine: ObservableObject {
     @Published var syncedCount = 0
     @Published var failedCount = 0
     @Published var totalToSync = 0
+    @Published var currentFileName: String = ""
+    @Published var currentProgress: Double = 0 // 0~1 当前文件上传进度
     @Published var syncFolderId: UUID? {
         didSet {
             if let id = syncFolderId {
@@ -86,12 +88,16 @@ final class SyncEngine: ObservableObject {
         if let str = UserDefaults.standard.string(forKey: "syncFolderId") {
             syncFolderId = UUID(uuidString: str)
         }
-        refreshStats()
+        // 异步刷新统计，不阻塞主线程
+        Task { await refreshStats() }
     }
 
-    func refreshStats() {
-        let videos = PHAsset.fetchAssets(with: .video, options: nil).count
-        let images = PHAsset.fetchAssets(with: .image, options: nil).count
+    func refreshStats() async {
+        let (videos, images) = await Task.detached {
+            let v = PHAsset.fetchAssets(with: .video, options: nil).count
+            let i = PHAsset.fetchAssets(with: .image, options: nil).count
+            return (v, i)
+        }.value
         totalInLibrary = videos + images
         unsyncedCount = max(0, totalInLibrary - syncedIds.count)
     }
@@ -114,24 +120,34 @@ final class SyncEngine: ObservableObject {
         }
 
         let api = APIService(baseURL: serverURL)
+        let currentSyncedIds = syncedIds
+        let lastSync = lastSyncDate
 
-        // 1. 获取相册所有视频+图片（不限数量）
-        let options = PHFetchOptions()
-        options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-        // 同步视频和图片
-        let videos = PHAsset.fetchAssets(with: .video, options: options)
-        let images = PHAsset.fetchAssets(with: .image, options: options)
+        // 1. 在后台线程获取相册并过滤（增量：只取上次同步后新增的）
+        let toSync: [PHAsset] = await Task.detached {
+            let options = PHFetchOptions()
+            options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
 
-        // 2. 过滤未同步的
-        var toSync: [PHAsset] = []
-        for result in [videos, images] {
-            for i in 0..<result.count {
-                let asset = result.object(at: i)
-                if !syncedIds.contains(asset.localIdentifier) {
-                    toSync.append(asset)
+            // 增量优化：有上次同步时间且已同步集合非空时，只取新增的
+            if let cutoff = lastSync, !currentSyncedIds.isEmpty {
+                let buffer = cutoff.addingTimeInterval(-120) // 2 分钟余量
+                options.predicate = NSPredicate(format: "creationDate > %@", buffer as NSDate)
+            }
+
+            let videos = PHAsset.fetchAssets(with: .video, options: options)
+            let images = PHAsset.fetchAssets(with: .image, options: options)
+
+            var result: [PHAsset] = []
+            for fetchResult in [videos, images] {
+                for i in 0..<fetchResult.count {
+                    let asset = fetchResult.object(at: i)
+                    if !currentSyncedIds.contains(asset.localIdentifier) {
+                        result.append(asset)
+                    }
                 }
             }
-        }
+            return result
+        }.value
 
         totalToSync = toSync.count
         syncedCount = 0
@@ -142,52 +158,45 @@ final class SyncEngine: ObservableObject {
             return
         }
 
-        // 3. 并发上传（3 路）
-        let concurrency = 3
-        await withTaskGroup(of: Void.self) { group in
-            var running = 0
-            for phAsset in toSync {
-                try? Task.checkCancellation()
-
-                if running >= concurrency {
-                    await group.next()
-                    running -= 1
-                }
-                running += 1
-
-                group.addTask { [self] in
-                    await self.syncOne(phAsset: phAsset, api: api)
-                }
-            }
+        // 2. 逐个上传（避免内存爆炸）
+        let folderId = syncFolderId
+        for (i, phAsset) in toSync.enumerated() {
+            if Task.isCancelled { break }
+            let resources = PHAssetResource.assetResources(for: phAsset)
+            currentFileName = resources.first?.originalFilename ?? "文件 \(i+1)"
+            currentProgress = 0
+            await syncOne(phAsset: phAsset, api: api, folderId: folderId)
         }
+        currentFileName = ""
+        currentProgress = 0
 
         lastSyncResult = "同步完成: \(syncedCount) 成功, \(failedCount) 失败"
         saveSyncedIds()
-        refreshStats()
+        await refreshStats()
     }
 
     // MARK: - Single Asset Sync
 
-    private func syncOne(phAsset: PHAsset, api: APIService) async {
+    private func syncOne(phAsset: PHAsset, api: APIService, folderId: UUID?) async {
         do {
-            // 导出
             let exported = try await PhotoLibraryService.exportAsset(phAsset)
             defer { try? FileManager.default.removeItem(at: exported.url) }
 
-            // 快速去重：用文件大小 + 首 1MB hash 查服务端
-            let fingerprint = await computeFingerprint(url: exported.url, size: exported.size)
+            // 在后台线程算指纹
+            let fingerprint = await Self.computeFingerprint(url: exported.url, size: exported.size)
             if let fp = fingerprint {
                 let exists = try? await api.checkDuplicate(fingerprint: fp)
                 if exists == true {
-                    // 服务端已有，标记为已同步
                     syncedIds.insert(phAsset.localIdentifier)
                     syncedCount += 1
                     return
                 }
             }
 
-            // 上传（带目标文件夹）
-            _ = try await api.uploadFile(fileURL: exported.url, folderId: syncFolderId)
+            // 带上照片拍摄时间 + 进度回调
+            _ = try await api.uploadFile(fileURL: exported.url, folderId: folderId, shootAt: phAsset.creationDate) { [weak self] progress in
+                Task { @MainActor in self?.currentProgress = progress }
+            }
 
             syncedIds.insert(phAsset.localIdentifier)
             syncedCount += 1
@@ -196,18 +205,20 @@ final class SyncEngine: ObservableObject {
         }
     }
 
-    // MARK: - Fingerprint (文件大小 + 首 1MB SHA256)
+    // MARK: - Fingerprint (文件大小 + 首 1MB SHA256) — 后台线程执行
 
-    private func computeFingerprint(url: URL, size: Int64) async -> String? {
-        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
-        defer { try? handle.close() }
+    private static func computeFingerprint(url: URL, size: Int64) async -> String? {
+        await Task.detached {
+            guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+            defer { try? handle.close() }
 
-        let headSize = min(1024 * 1024, Int(size)) // 最多读 1MB
-        guard let headData = try? handle.read(upToCount: headSize) else { return nil }
+            let headSize = min(1024 * 1024, Int(size))
+            guard let headData = try? handle.read(upToCount: headSize) else { return nil }
 
-        let hash = SHA256.hash(data: headData)
-        let hashStr = hash.compactMap { String(format: "%02x", $0) }.joined()
-        return "\(size)_\(hashStr)"
+            let hash = SHA256.hash(data: headData)
+            let hashStr = hash.compactMap { String(format: "%02x", $0) }.joined()
+            return "\(size)_\(hashStr)"
+        }.value
     }
 
     // MARK: - Persistence
@@ -219,7 +230,6 @@ final class SyncEngine: ObservableObject {
     }
 
     private func saveSyncedIds() {
-        // 只保留最近 10000 条，防止无限增长
         let arr = Array(syncedIds.suffix(10000))
         UserDefaults.standard.set(arr, forKey: syncedIdsKey)
     }

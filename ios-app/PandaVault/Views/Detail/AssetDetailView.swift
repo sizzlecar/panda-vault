@@ -5,6 +5,7 @@ struct AssetDetailView: View {
     let assets: [Asset]
     let initialAsset: Asset
     let api: APIService
+    var onDelete: (() -> Void)?
 
     @Environment(\.dismiss) private var dismiss
     @State private var currentIndex: Int
@@ -12,12 +13,12 @@ struct AssetDetailView: View {
     @State private var showSaveAlert = false
     @State private var saveMessage = ""
     @State private var isSaving = false
-    @State private var saveProgress: Double = 0
 
-    init(assets: [Asset], initialAsset: Asset, api: APIService) {
+    init(assets: [Asset], initialAsset: Asset, api: APIService, onDelete: (() -> Void)? = nil) {
         self.assets = assets
         self.initialAsset = initialAsset
         self.api = api
+        self.onDelete = onDelete
         _currentIndex = State(initialValue: max(0, assets.firstIndex(of: initialAsset) ?? 0))
     }
 
@@ -28,126 +29,221 @@ struct AssetDetailView: View {
 
     var body: some View {
         ZStack {
-            PV.bg.ignoresSafeArea()
+            Color.black.ignoresSafeArea()
 
             if let current {
-                TabView(selection: $currentIndex) {
-                    ForEach(Array(assets.enumerated()), id: \.element.id) { index, asset in
-                        Group {
-                            if asset.isVideo {
-                                FullVideoPlayer(url: api.proxyURL(for: asset) ?? api.downloadURL(for: asset))
-                            } else {
-                                ZoomableImageView(url: api.thumbnailURL(for: asset))
-                            }
-                        }
-                        .tag(index)
+                // 当前内容
+                Group {
+                    if current.isVideo {
+                        FullVideoPlayer(url: api.proxyURL(for: current) ?? api.rawURL(for: current))
+                            .id(currentIndex)
+                    } else {
+                        ZoomableImageView(url: api.rawURL(for: current))
+                            .id(currentIndex)
                     }
                 }
-                .tabViewStyle(.page(indexDisplayMode: .never))
                 .ignoresSafeArea()
 
-                // 顶部
-                VStack {
-                    HStack {
-                        Button { dismiss() } label: {
-                            Image(systemName: "xmark")
-                                .font(.body.bold())
-                                .foregroundStyle(.white)
-                                .frame(width: 36, height: 36)
-                                .background(PV.bg.opacity(0.6), in: RoundedRectangle(cornerRadius: 3))
-                        }
+                if current.isVideo {
+                    // 视频：底部浮动栏（不遮挡系统播放器顶部控件）
+                    VStack {
                         Spacer()
-                        Text("\(currentIndex + 1)/\(assets.count)")
-                            .font(.system(.caption2, design: .monospaced).bold())
-                            .foregroundStyle(PV.textSecondary)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(PV.bg.opacity(0.6), in: RoundedRectangle(cornerRadius: 3))
-                        Spacer()
-                        Button { showDeleteConfirm = true } label: {
-                            Image(systemName: "trash")
-                                .font(.body)
-                                .foregroundStyle(PV.pink)
-                                .frame(width: 36, height: 36)
-                                .background(PV.bg.opacity(0.6), in: RoundedRectangle(cornerRadius: 3))
-                        }
+                        videoBottomBar(current)
                     }
-                    .padding(.horizontal)
-                    .padding(.top, 8)
+                } else {
+                    // 图片：顶部 + 底部按钮
+                    VStack {
+                        topButtons(current)
+                            .padding(.top, 50)
+                        Spacer()
+                        imageBottomBar(current)
+                    }
+                }
 
-                    Spacer()
-
-                    // 底部
-                    VStack(spacing: 8) {
-                        // 文件信息
-                        HStack(spacing: 12) {
-                            Text(current.filename)
-                                .lineLimit(1)
-                            Spacer()
-                            Text(current.formattedSize)
-                            if let res = current.resolution { Text(res) }
-                            if let dur = current.formattedDuration { Text(dur) }
-                        }
-                        .font(.system(.caption2, design: .monospaced))
-                        .foregroundStyle(PV.textMuted)
-
-                        // 保存按钮
+                // 左右切换箭头
+                if assets.count > 1 {
+                    HStack(spacing: 0) {
+                        // 上一张
                         Button {
-                            Task { await saveToPhotos(current) }
+                            if currentIndex > 0 { withAnimation { currentIndex -= 1 } }
                         } label: {
-                            HStack {
-                                Image(systemName: "square.and.arrow.down")
-                                Text("SAVE TO ALBUM")
-                            }
-                            .font(.system(.caption, design: .monospaced).bold())
-                            .tracking(1)
-                            .foregroundStyle(PV.bg)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 11)
-                            .background(PV.green, in: RoundedRectangle(cornerRadius: 3))
+                            Color.clear.frame(width: 44)
+                                .overlay(alignment: .center) {
+                                    if currentIndex > 0 {
+                                        Image(systemName: "chevron.left")
+                                            .font(.title2.bold())
+                                            .foregroundStyle(.white.opacity(0.6))
+                                            .padding(8)
+                                            .background(.black.opacity(0.3), in: Circle())
+                                    }
+                                }
+                        }
+                        Spacer()
+                        // 下一张
+                        Button {
+                            if currentIndex < assets.count - 1 { withAnimation { currentIndex += 1 } }
+                        } label: {
+                            Color.clear.frame(width: 44)
+                                .overlay(alignment: .center) {
+                                    if currentIndex < assets.count - 1 {
+                                        Image(systemName: "chevron.right")
+                                            .font(.title2.bold())
+                                            .foregroundStyle(.white.opacity(0.6))
+                                            .padding(8)
+                                            .background(.black.opacity(0.3), in: Circle())
+                                    }
+                                }
                         }
                     }
-                    .padding()
-                    .padding(.bottom, 4)
-                    .background(
-                        LinearGradient(colors: [.clear, PV.bg.opacity(0.8)], startPoint: .top, endPoint: .bottom)
-                            .ignoresSafeArea(edges: .bottom)
-                    )
+                    .padding(.vertical, 200)
                 }
 
-                if isSaving {
-                    PV.bg.opacity(0.7).ignoresSafeArea()
-                    VStack(spacing: 12) {
-                        ProgressView().tint(PV.cyan)
-                        Text("SAVING...")
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(PV.textSecondary)
-                    }
-                }
+                if isSaving { savingOverlay }
             }
         }
         .confirmationDialog("确定删除？", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
             Button("删除", role: .destructive) { Task { await deleteCurrent() } }
         }
-        .alert("保存", isPresented: $showSaveAlert) {
-            Button("OK") {}
+        .alert("", isPresented: $showSaveAlert) {
+            Button("好") {}
         } message: {
             Text(saveMessage)
         }
     }
 
+    // MARK: - Top Buttons
+
+    private func topButtons(_ asset: Asset) -> some View {
+        HStack {
+            Button { dismiss() } label: {
+                Image(systemName: "xmark")
+                    .font(.body.bold())
+                    .padding(10)
+                    .background(.ultraThinMaterial, in: Circle())
+            }
+            Spacer()
+            if assets.count > 1 {
+                Text("\(currentIndex + 1)/\(assets.count)")
+                    .font(.caption.monospacedDigit().bold())
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(.ultraThinMaterial, in: Capsule())
+            }
+            Spacer()
+            Button { showDeleteConfirm = true } label: {
+                Image(systemName: "trash")
+                    .font(.body)
+                    .foregroundStyle(.red)
+                    .padding(10)
+                    .background(.ultraThinMaterial, in: Circle())
+            }
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal)
+        .padding(.top, 8)
+    }
+
+    // MARK: - Video Bottom Bar
+
+    private func videoBottomBar(_ asset: Asset) -> some View {
+        HStack(spacing: 16) {
+            Button { dismiss() } label: {
+                Image(systemName: "xmark")
+                    .font(.body.bold())
+                    .padding(10)
+                    .background(.ultraThinMaterial, in: Circle())
+            }
+
+            if assets.count > 1 {
+                Text("\(currentIndex + 1)/\(assets.count)")
+                    .font(.caption.monospacedDigit().bold())
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(.ultraThinMaterial, in: Capsule())
+            }
+
+            Spacer()
+
+            Button { Task { await saveToPhotos(asset) } } label: {
+                Image(systemName: "square.and.arrow.down")
+                    .font(.body)
+                    .padding(10)
+                    .background(.ultraThinMaterial, in: Circle())
+            }
+
+            Button { showDeleteConfirm = true } label: {
+                Image(systemName: "trash")
+                    .font(.body)
+                    .foregroundStyle(.red)
+                    .padding(10)
+                    .background(.ultraThinMaterial, in: Circle())
+            }
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal)
+        .padding(.bottom, 8)
+    }
+
+    // MARK: - Image Bottom Bar
+
+    private func imageBottomBar(_ asset: Asset) -> some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 12) {
+                Text(asset.filename).lineLimit(1)
+                Spacer()
+                Text(asset.formattedSize)
+                if let res = asset.resolution { Text(res) }
+            }
+            .font(.caption2)
+            .foregroundStyle(.white.opacity(0.8))
+
+            Button { Task { await saveToPhotos(asset) } } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "square.and.arrow.down")
+                    Text("保存到相册")
+                }
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(.white.opacity(0.15), in: RoundedRectangle(cornerRadius: 10))
+            }
+        }
+        .padding()
+        .padding(.bottom, 4)
+        .background(.ultraThinMaterial)
+    }
+
+    // MARK: - Saving Overlay
+
+    private var savingOverlay: some View {
+        Color.black.opacity(0.6).ignoresSafeArea()
+            .overlay {
+                VStack(spacing: 12) {
+                    ProgressView().tint(.white)
+                    Text("保存中...").font(.subheadline).foregroundStyle(.white)
+                }
+            }
+    }
+
+    // MARK: - Actions
+
     private func saveToPhotos(_ asset: Asset) async {
         isSaving = true
         defer { isSaving = false }
         do {
-            let tempURL = try await api.downloadAsset(id: asset.id) { p in
-                Task { @MainActor in saveProgress = p }
-            }
-            defer { try? FileManager.default.removeItem(at: tempURL) }
+            let tempURL = try await api.downloadAsset(id: asset.id) { _ in }
+            let ext = (asset.filename as NSString).pathExtension.lowercased()
+            let destURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString)
+                .appendingPathExtension(ext.isEmpty ? "jpg" : ext)
+            try FileManager.default.moveItem(at: tempURL, to: destURL)
+            defer { try? FileManager.default.removeItem(at: destURL) }
+
             if asset.isVideo {
-                try await PhotoLibraryService.saveVideoToAlbum(fileURL: tempURL)
+                try await PhotoLibraryService.saveVideoToAlbum(fileURL: destURL)
             } else {
-                try await PhotoLibraryService.saveImageToAlbum(fileURL: tempURL)
+                try await PhotoLibraryService.saveImageToAlbum(fileURL: destURL)
             }
             saveMessage = "已保存到相册"
         } catch {
@@ -160,8 +256,9 @@ struct AssetDetailView: View {
         guard let asset = current else { return }
         do {
             try await api.deleteAsset(id: asset.id)
+            onDelete?()
             dismiss()
-        } catch { print("[PandaVault] Error: \(error)") }
+        } catch { print("[PandaVault] Delete error: \(error)") }
     }
 }
 
@@ -211,11 +308,9 @@ struct ZoomableImageView: View {
                         withAnimation { scale = scale > 1 ? 1 : 3 }
                     }
             } else if phase.error != nil {
-                Image(systemName: "photo")
-                    .font(.largeTitle)
-                    .foregroundStyle(PV.textMuted)
+                Image(systemName: "photo").font(.largeTitle).foregroundStyle(.white.opacity(0.3))
             } else {
-                ProgressView().tint(PV.cyan)
+                ProgressView().tint(.white)
             }
         }
     }
