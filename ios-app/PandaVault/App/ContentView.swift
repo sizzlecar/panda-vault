@@ -28,8 +28,6 @@ struct ContentView: View {
     }
 
     private var discoveryView: some View {
-        ZStack {
-            PV.bg.ignoresSafeArea()
 
             VStack(spacing: 28) {
                 Spacer()
@@ -37,7 +35,7 @@ struct ContentView: View {
                 // 像素风标题
                 Text("PANDA\nVAULT")
                     .font(.system(size: 42, weight: .black, design: .monospaced))
-                    .foregroundStyle(PV.textPrimary)
+                    .foregroundStyle(.primary)
                     .multilineTextAlignment(.center)
                     .tracking(6)
 
@@ -52,7 +50,7 @@ struct ContentView: View {
                             .tint(PV.cyan)
                         Text("SCANNING LAN...")
                             .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(PV.textSecondary)
+                            .foregroundStyle(.secondary)
                             .tracking(2)
                     }
                     .padding(.top, 20)
@@ -64,7 +62,7 @@ struct ContentView: View {
 
                         Text("确认电脑已启动 PandaVault\n且手机与电脑在同一 WiFi")
                             .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(PV.textMuted)
+                            .foregroundStyle(.tertiary)
                             .multilineTextAlignment(.center)
 
                         HStack(spacing: 12) {
@@ -72,7 +70,7 @@ struct ContentView: View {
                                 .buttonStyle(PixelButtonStyle(color: PV.cyan))
 
                             Button("手动输入") { showManualInput = true }
-                                .buttonStyle(PixelButtonStyle(color: PV.surfaceBg))
+                                .buttonStyle(PixelButtonStyle(color: Color(.secondarySystemFill)))
                         }
                         .padding(.top, 8)
                     }
@@ -81,7 +79,6 @@ struct ContentView: View {
                 Spacer()
                 Spacer()
             }
-        }
         .sheet(isPresented: $showManualInput) {
             ManualInputSheet()
                 .environmentObject(appState)
@@ -99,7 +96,6 @@ struct ManualInputSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                PV.bg.ignoresSafeArea()
                 Form {
                     Section {
                         TextField("http://192.168.1.x:8080", text: $serverInput)
@@ -129,7 +125,7 @@ struct ManualInputSheet: View {
                         .disabled(serverInput.isEmpty || isTesting)
                     }
                 }
-                .scrollContentBackground(.hidden)
+                
             }
             .navigationTitle("手动连接")
             .navigationBarTitleDisplayMode(.inline)

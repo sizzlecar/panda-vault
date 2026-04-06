@@ -132,14 +132,13 @@ private class ServiceResolver: NSObject, NetServiceDelegate {
         }
 
         // 优先非 link-local 的 IPv4（WiFi 地址）
-        let best = candidates.first(where: { !$0.isLocal }) ?? candidates.first
-        if let best {
+        if let best = candidates.first(where: { !$0.isLocal }) {
             let url = "http://\(best.ip):\(sender.port)"
             completion(.success(url))
             return
         }
 
-        // fallback: 用 hostname
+        // 只有 link-local(169.254.x.x) 或 loopback 时，用 .local hostname 代替
         if let hostName = sender.hostName {
             let host = hostName.hasSuffix(".") ? String(hostName.dropLast()) : hostName
             completion(.success("http://\(host):\(sender.port)"))

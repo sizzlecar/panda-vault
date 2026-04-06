@@ -111,17 +111,24 @@ final class DownloadManager: ObservableObject {
             let tempURL = try await api.downloadAsset(id: task.assetId) { p in
                 Task { @MainActor in task.status = .downloading(progress: p) }
             }
-            defer { try? FileManager.default.removeItem(at: tempURL) }
+
+            // 加正确扩展名，PHPhotoLibrary 需要
+            let ext = (task.filename as NSString).pathExtension.lowercased()
+            let destURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString)
+                .appendingPathExtension(ext.isEmpty ? "jpg" : ext)
+            try FileManager.default.moveItem(at: tempURL, to: destURL)
+            defer { try? FileManager.default.removeItem(at: destURL) }
 
             await MainActor.run { task.status = .saving }
             if task.isVideo {
-                try await PhotoLibraryService.saveVideoToAlbum(fileURL: tempURL)
+                try await PhotoLibraryService.saveVideoToAlbum(fileURL: destURL)
             } else {
-                try await PhotoLibraryService.saveImageToAlbum(fileURL: tempURL)
+                try await PhotoLibraryService.saveImageToAlbum(fileURL: destURL)
             }
             await MainActor.run { task.status = .completed }
         } catch {
-            print("[PandaVault] Error: \(error)")
+            print("[PandaVault] Download error: \(error)")
             await MainActor.run { task.status = .failed(message: error.localizedDescription) }
         }
     }

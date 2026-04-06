@@ -19,16 +19,13 @@ struct UploadView: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                PV.bg.ignoresSafeArea()
                 List {
                     exportSection
                     folderSection
                     pickSection
                     uploadStatusSections
                 }
-                .scrollContentBackground(.hidden)
-            }
+                
             .navigationTitle("上传")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -69,7 +66,7 @@ struct UploadView: View {
                     ProgressView().tint(PV.cyan)
                     Text(exportProgress)
                         .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(PV.textSecondary)
+                        .foregroundStyle(.secondary)
                 }
             }
         }
@@ -132,10 +129,16 @@ struct UploadView: View {
                 }
             }
 
-            let doneCount = uploadManager.completedCount
-            if doneCount > 0 {
-                Section {} header: {
-                    PixelSectionHeader(title: "已完成", count: "\(doneCount)")
+            let doneItems = uploadManager.tasks.filter {
+                if case .completed = $0.status { return true }
+                if case .duplicated = $0.status { return true }
+                return false
+            }
+            if !doneItems.isEmpty {
+                DisclosureGroup {
+                    ForEach(doneItems) { UploadTaskRow(task: $0) }
+                } label: {
+                    PixelSectionHeader(title: "已完成", count: "\(doneItems.count)")
                 }
             }
         }
@@ -221,7 +224,7 @@ struct UploadTaskRow: View {
                 HStack(spacing: 6) {
                     Text(ByteCountFormatter.string(fromByteCount: task.fileSize, countStyle: .file))
                         .font(.system(.caption2, design: .monospaced))
-                        .foregroundStyle(PV.textMuted)
+                        .foregroundStyle(.tertiary)
                     statusText
                 }
             }
@@ -238,11 +241,10 @@ struct UploadTaskRow: View {
             case .failed:
                 Image(systemName: "xmark").foregroundStyle(PV.pink).font(.caption.bold())
             default:
-                Image(systemName: "ellipsis").foregroundStyle(PV.textMuted).font(.caption)
+                Image(systemName: "ellipsis").foregroundStyle(.tertiary).font(.caption)
             }
         }
         .padding(.vertical, 2)
-        .listRowBackground(PV.cardBg)
     }
 
     private var iconName: String {
@@ -255,7 +257,7 @@ struct UploadTaskRow: View {
         switch task.status {
         case .completed, .duplicated: return PV.green
         case .failed: return PV.pink
-        default: return PV.textMuted
+        default: return Color(.tertiaryLabel)
         }
     }
 
@@ -263,7 +265,7 @@ struct UploadTaskRow: View {
     private var statusText: some View {
         switch task.status {
         case .pending:
-            PixelTag(text: "WAIT", color: PV.textMuted)
+            PixelTag(text: "WAIT", color: Color(.tertiaryLabel))
         case .uploading(let p):
             PixelTag(text: "\(Int(p * 100))%", color: PV.cyan)
         case .completed:
@@ -280,7 +282,7 @@ struct CircularProgressView: View {
     let progress: Double
     var body: some View {
         ZStack {
-            Circle().stroke(PV.surfaceBg, lineWidth: 3)
+            Circle().stroke(Color(.secondarySystemFill), lineWidth: 3)
             Circle()
                 .trim(from: 0, to: progress)
                 .stroke(PV.cyan, style: StrokeStyle(lineWidth: 3, lineCap: .round))
@@ -318,7 +320,7 @@ struct UploadProgressSummary: View {
             HStack {
                 Text("\(completed)/\(total)")
                     .font(.system(.caption, design: .monospaced).bold())
-                    .foregroundStyle(PV.textPrimary)
+                    .foregroundStyle(.primary)
                 if uploading > 0 {
                     PixelTag(text: "\(uploading) UPLOADING", color: PV.cyan)
                 }
@@ -328,9 +330,8 @@ struct UploadProgressSummary: View {
                 Spacer()
                 Text("\(Int(overallProgress * 100))%")
                     .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(PV.textMuted)
+                    .foregroundStyle(.tertiary)
             }
         }
-        .listRowBackground(PV.cardBg)
     }
 }

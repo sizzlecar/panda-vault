@@ -6,10 +6,10 @@ struct AssetThumbnail: View {
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
-            PV.surfaceBg
+            Color(.secondarySystemFill)
                 .aspectRatio(1, contentMode: .fit)
                 .overlay {
-                    AsyncImage(url: api.thumbnailURL(for: asset)) { phase in
+                    AsyncImage(url: api.thumbnailURL(for: asset), transaction: Transaction()) { phase in
                         switch phase {
                         case .success(let image):
                             image
@@ -17,7 +17,7 @@ struct AssetThumbnail: View {
                                 .aspectRatio(contentMode: .fill)
                         case .failure:
                             Image(systemName: asset.isVideo ? "video" : "photo")
-                                .foregroundStyle(PV.textMuted)
+                                .foregroundStyle(.tertiary)
                         default:
                             ProgressView().tint(PV.cyan)
                         }
@@ -37,10 +37,11 @@ struct AssetThumbnail: View {
                 .foregroundStyle(.white)
                 .padding(.horizontal, 5)
                 .padding(.vertical, 2)
-                .background(PV.bg.opacity(0.8), in: RoundedRectangle(cornerRadius: 2))
+                .background(Color.black.opacity(0.8), in: RoundedRectangle(cornerRadius: 2))
                 .padding(4)
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 2))
+        .contentShape(Rectangle())
     }
 }
