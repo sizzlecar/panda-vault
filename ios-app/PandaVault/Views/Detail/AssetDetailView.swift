@@ -169,23 +169,31 @@ struct AssetDetailView: View {
     // MARK: - Video Bottom Bar
 
     private func videoBottomBar(_ asset: Asset) -> some View {
-        HStack(spacing: 16) {
-            Button { dismiss() } label: {
-                Image(systemName: "xmark")
-                    .font(.body.bold())
-                    .padding(10)
-                    .background(.ultraThinMaterial, in: Circle())
+        VStack(spacing: 8) {
+            // 视频信息行
+            HStack(spacing: 8) {
+                let date = asset.shootAt ?? asset.createdAt
+                Text(Self.dateFormatter.string(from: date))
+                if let dur = asset.formattedDuration { Text(dur) }
+                Text(asset.formattedSize)
+                Spacer()
+                if assets.count > 1 {
+                    Text("\(currentIndex + 1)/\(assets.count)")
+                }
             }
+            .font(.system(.caption2, design: .monospaced))
+            .foregroundStyle(.white.opacity(0.7))
 
-            if assets.count > 1 {
-                Text("\(currentIndex + 1)/\(assets.count)")
-                    .font(.caption.monospacedDigit().bold())
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(.ultraThinMaterial, in: Capsule())
-            }
+            // 按钮行
+            HStack(spacing: 16) {
+                Button { dismiss() } label: {
+                    Image(systemName: "xmark")
+                        .font(.body.bold())
+                        .padding(10)
+                        .background(.ultraThinMaterial, in: Circle())
+                }
 
-            Spacer()
+                Spacer()
 
             Button { Task { await saveToPhotos(asset) } } label: {
                 Image(systemName: "square.and.arrow.down")
@@ -219,6 +227,7 @@ struct AssetDetailView: View {
         .foregroundStyle(.white)
         .padding(.horizontal)
         .padding(.bottom, 8)
+        }
     }
 
     // MARK: - Image Bottom Bar
@@ -302,7 +311,12 @@ struct AssetDetailView: View {
             .overlay {
                 VStack(spacing: 12) {
                     ProgressView().tint(.white)
-                    Text("保存中...").font(.subheadline).foregroundStyle(.white)
+                    Text("下载中...").font(.subheadline).foregroundStyle(.white)
+                    if let asset = current {
+                        Text(asset.formattedSize)
+                            .font(.caption2)
+                            .foregroundStyle(.white.opacity(0.6))
+                    }
                 }
             }
     }

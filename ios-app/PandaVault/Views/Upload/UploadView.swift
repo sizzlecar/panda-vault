@@ -1,6 +1,12 @@
 import SwiftUI
 import PhotosUI
 
+private enum UploadSheetType: Identifiable {
+    case folderPicker
+    case newFolder
+    var id: Int { hashValue }
+}
+
 struct UploadView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var uploadManager: UploadManager
@@ -9,11 +15,8 @@ struct UploadView: View {
     @State private var folders: [Folder] = []
     @State private var selectedFolderId: UUID?
     @State private var selectedFolderPath: String = "/ 根目录"
-    @State private var showFolderPicker = false
-    @State private var showNewFolderAlert = false
+    @State private var activeSheet: UploadSheetType?
     @State private var newFolderName = ""
-    @State private var showResultAlert = false
-    @State private var resultMessage = ""
     @State private var isExporting = false
     @State private var exportProgress = ""
 
@@ -38,25 +41,22 @@ struct UploadView: View {
                     }
                 }
             }
-            .sheet(isPresented: $showNewFolderAlert) {
-                CreateFolderSheet(
-                    parentPath: selectedFolderPath == "/ 根目录" ? "/" : selectedFolderPath,
-                    api: appState.api,
-                    parentId: selectedFolderId,
-                    folderName: $newFolderName,
-                    selectedFolderId: $selectedFolderId,
-                    selectedFolderPath: $selectedFolderPath
-                )
-                .presentationDetents([.medium])
+            .sheet(item: $activeSheet) { sheet in
+                switch sheet {
+                case .folderPicker:
+                    FolderPickerView(api: appState.api, selectedFolderId: $selectedFolderId, selectedFolderPath: $selectedFolderPath, onDismiss: { activeSheet = nil })
+                case .newFolder:
+                    CreateFolderSheet(
+                        parentPath: selectedFolderPath == "/ 根目录" ? "/" : selectedFolderPath,
+                        api: appState.api,
+                        parentId: selectedFolderId,
+                        folderName: $newFolderName,
+                        selectedFolderId: $selectedFolderId,
+                        selectedFolderPath: $selectedFolderPath
+                    )
+                    .presentationDetents([.medium])
+                }
             }
-            .alert("", isPresented: $showResultAlert) {
-                Button("好") {}
-            } message: {
-                Text(resultMessage)
-            }
-        }
-        .sheet(isPresented: $showFolderPicker) {
-            FolderPickerView(api: appState.api, selectedFolderId: $selectedFolderId, selectedFolderPath: $selectedFolderPath, isPresented: $showFolderPicker)
         }
         .photosPicker(
             isPresented: $showPicker,
@@ -93,7 +93,7 @@ struct UploadView: View {
     private var folderSection: some View {
         Section {
             Button {
-                showFolderPicker = true
+                activeSheet = .folderPicker
             } label: {
                 HStack {
                     Text("上传到")
@@ -107,7 +107,7 @@ struct UploadView: View {
                         .foregroundStyle(.tertiary)
                 }
             }
-            Button { newFolderName = ""; showNewFolderAlert = true } label: {
+            Button { newFolderName = ""; activeSheet = .newFolder } label: {
                 Label("新建文件夹", systemImage: "folder.badge.plus")
                     .foregroundStyle(PV.cyan)
             }
@@ -315,7 +315,8 @@ struct FolderPickerView: View {
     let api: APIService
     @Binding var selectedFolderId: UUID?
     @Binding var selectedFolderPath: String
-    @Binding var isPresented: Bool
+    var onDismiss: (() -> Void)?
+    @Environment(\.dismiss) private var dismiss
 
     // 面包屑导航：[(name, id?)]
     @State private var breadcrumbs: [(name: String, id: UUID?)] = [("根目录", nil)]
@@ -351,7 +352,7 @@ struct FolderPickerView: View {
                     Button {
                         selectedFolderId = currentParentId
                         selectedFolderPath = currentPath
-                        isPresented = false
+                        dismiss(); onDismiss?()
                     } label: {
                         HStack {
                             Image(systemName: "checkmark.circle.fill")
@@ -386,7 +387,7 @@ struct FolderPickerView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") { isPresented = false }
+                    Button("取消") { dismiss(); onDismiss?() }
                 }
             }
             .task { await loadFolders() }
