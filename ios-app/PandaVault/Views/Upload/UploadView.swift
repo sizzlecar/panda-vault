@@ -317,81 +317,94 @@ struct FolderPickerView: View {
     @Binding var selectedFolderPath: String
     @Binding var isPresented: Bool
 
-    var body: some View {
-        NavigationStack {
-            FolderPickerLevel(api: api, parentId: nil, pathPrefix: "/", selectedFolderId: $selectedFolderId, selectedFolderPath: $selectedFolderPath, isPresented: $isPresented)
-                .navigationTitle("选择文件夹")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("取消") { isPresented = false }
-                    }
-                }
-        }
-    }
-}
-
-private struct FolderPickerLevel: View {
-    let api: APIService
-    let parentId: UUID?
-    let pathPrefix: String
-    @Binding var selectedFolderId: UUID?
-    @Binding var selectedFolderPath: String
-    @Binding var isPresented: Bool
-
+    // 面包屑导航：[(name, id?)]
+    @State private var breadcrumbs: [(name: String, id: UUID?)] = [("根目录", nil)]
+    @State private var currentParentId: UUID? = nil
     @State private var folders: [Folder] = []
     @State private var isLoading = false
 
     var body: some View {
-        List {
-            Button {
-                selectedFolderId = parentId
-                selectedFolderPath = parentId == nil ? "/ 根目录" : pathPrefix
-                isPresented = false
-            } label: {
-                HStack {
-                    Image(systemName: "checkmark")
-                        .foregroundStyle(selectedFolderId == parentId ? PV.cyan : .clear)
-                        .frame(width: 20)
-                    Text(parentId == nil ? "/ 根目录" : "[ 选择当前文件夹 ]")
-                        .foregroundStyle(parentId == nil ? .primary : PV.cyan)
+        NavigationStack {
+            VStack(spacing: 0) {
+                // 面包屑路径
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 4) {
+                        ForEach(Array(breadcrumbs.enumerated()), id: \.offset) { idx, crumb in
+                            if idx > 0 { Text("/").font(.caption2).foregroundStyle(.tertiary) }
+                            Button(crumb.name) {
+                                // 跳回到这一层
+                                breadcrumbs = Array(breadcrumbs.prefix(idx + 1))
+                                currentParentId = crumb.id
+                                Task { await loadFolders() }
+                            }
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(idx == breadcrumbs.count - 1 ? PV.cyan : .secondary)
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.vertical, 8)
                 }
-            }
+                .background(Color(.secondarySystemGroupedBackground))
 
-            if isLoading {
-                HStack { Spacer(); ProgressView().tint(PV.cyan); Spacer() }
-            }
+                List {
+                    // 选当前层
+                    Button {
+                        selectedFolderId = currentParentId
+                        selectedFolderPath = currentPath
+                        isPresented = false
+                    } label: {
+                        HStack {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(PV.cyan)
+                            Text("选择此文件夹")
+                                .foregroundStyle(PV.cyan)
+                                .fontWeight(.medium)
+                        }
+                    }
 
-            ForEach(folders) { folder in
-                NavigationLink {
-                    FolderPickerLevel(
-                        api: api,
-                        parentId: folder.id,
-                        pathPrefix: "\(pathPrefix)\(folder.name)/",
-                        selectedFolderId: $selectedFolderId,
-                        selectedFolderPath: $selectedFolderPath,
-                        isPresented: $isPresented
-                    )
-                    .navigationTitle(folder.name)
-                } label: {
-                    HStack {
-                        Image(systemName: "checkmark")
-                            .foregroundStyle(selectedFolderId == folder.id ? PV.cyan : .clear)
-                            .frame(width: 20)
-                        Image(systemName: "folder.fill").foregroundStyle(PV.cyan)
-                        Text(folder.name)
+                    if isLoading {
+                        HStack { Spacer(); ProgressView().tint(PV.cyan); Spacer() }
+                    }
+
+                    ForEach(folders) { folder in
+                        Button {
+                            breadcrumbs.append((folder.name, folder.id))
+                            currentParentId = folder.id
+                            Task { await loadFolders() }
+                        } label: {
+                            HStack {
+                                Image(systemName: "folder.fill").foregroundStyle(PV.cyan)
+                                Text(folder.name).foregroundStyle(.primary)
+                                Spacer()
+                                Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
+                            }
+                        }
                     }
                 }
             }
-        }
-        .task {
-            isLoading = true
-            defer { isLoading = false }
-            do {
-                folders = try await api.getFolders(parentId: parentId)
-            } catch {
-                print("[PandaVault] Folder picker error: \(error)")
+            .navigationTitle("选择文件夹")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { isPresented = false }
+                }
             }
+            .task { await loadFolders() }
+        }
+    }
+
+    private var currentPath: String {
+        if breadcrumbs.count <= 1 { return "/ 根目录" }
+        return "/" + breadcrumbs.dropFirst().map(\.name).joined(separator: "/") + "/"
+    }
+
+    private func loadFolders() async {
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            folders = try await api.getFolders(parentId: currentParentId)
+        } catch {
+            print("[PandaVault] Folder picker error: \(error)")
         }
     }
 }

@@ -234,6 +234,10 @@ final class APIService: Sendable {
         }
 
         let result = try await completeChunkedUpload(uploadId: initResp.uploadId)
+        // 分片上传不经过 upload handler，需要手动关联文件夹
+        if let fid = folderId {
+            try? await addAssetToFolder(folderId: fid, assetId: result.assetId)
+        }
         return try await getAsset(id: result.assetId)
     }
 

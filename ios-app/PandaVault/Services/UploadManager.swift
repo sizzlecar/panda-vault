@@ -201,6 +201,12 @@ final class UploadManager: ObservableObject {
 
         // 4. Complete
         let result = try await api.completeChunkedUpload(uploadId: initResp.uploadId)
+
+        // 5. 关联文件夹（分片上传的 complete 不经过 upload handler，需要手动关联）
+        if let fid = task.folderId {
+            try? await api.addAssetToFolder(folderId: fid, assetId: result.assetId)
+        }
+
         await MainActor.run {
             task.status = result.duplicate
                 ? .duplicated(assetId: result.assetId)
