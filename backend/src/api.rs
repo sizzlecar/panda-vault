@@ -1172,6 +1172,7 @@ async fn delete_folder(
 struct ListFolderAssetsQuery {
     limit: Option<i64>,
     offset: Option<i64>,
+    q: Option<String>,
 }
 
 async fn list_folder_assets(
@@ -1181,8 +1182,8 @@ async fn list_folder_assets(
 ) -> Response {
     let limit = query.limit.unwrap_or(50).clamp(1, 200);
     let offset = query.offset.unwrap_or(0);
-    
-    match folder::list_folder_assets(&state.pool, id, limit, offset).await {
+
+    match folder::list_folder_assets(&state.pool, id, query.q.as_deref(), limit, offset).await {
         Ok(assets) => (StatusCode::OK, Json(assets)).into_response(),
         Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }

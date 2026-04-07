@@ -147,8 +147,12 @@ final class APIService: Sendable {
         try validateResponse(response)
     }
 
-    func getFolderAssets(folderId: UUID, limit: Int = 200, offset: Int = 0) async throws -> [Asset] {
-        try await get("/api/folders/\(folderId)/assets?limit=\(limit)&offset=\(offset)")
+    func getFolderAssets(folderId: UUID, query: String? = nil, limit: Int = 200, offset: Int = 0) async throws -> [Asset] {
+        var params = "limit=\(limit)&offset=\(offset)"
+        if let q = query, !q.isEmpty {
+            params += "&q=\(q.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? q)"
+        }
+        return try await get("/api/folders/\(folderId)/assets?\(params)")
     }
 
     func addAssetToFolder(folderId: UUID, assetId: UUID) async throws {

@@ -17,13 +17,7 @@ struct FolderDetailView: View {
     @State private var showRenameAlert = false
     @State private var renameText = ""
 
-    private func applyFilter() {
-        if searchText.isEmpty {
-            displayedAssets = assets
-        } else {
-            displayedAssets = assets.filter { $0.filename.localizedCaseInsensitiveContains(searchText) }
-        }
-    }
+    @State private var searchTask: Task<Void, Never>?
 
     var body: some View {
         FolderDetailContent(
@@ -36,7 +30,18 @@ struct FolderDetailView: View {
         )
         .navigationTitle(folder.name)
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "在「\(folder.name)」中搜索...")
-        .onChange(of: searchText) { _, _ in applyFilter() }
+        .onChange(of: searchText) { _, newValue in
+            searchTask?.cancel()
+            if newValue.isEmpty {
+                displayedAssets = assets
+            } else {
+                searchTask = Task {
+                    try? await Task.sleep(nanoseconds: 300_000_000) // 300ms 防抖
+                    guard !Task.isCancelled else { return }
+                    await searchInFolder(query: newValue)
+                }
+            }
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 FolderDetailMenu(
@@ -89,9 +94,19 @@ struct FolderDetailView: View {
         defer { isLoading = false }
         do {
             assets = try await api.getFolderAssets(folderId: folder.id)
-            applyFilter()
+            displayedAssets = assets
         } catch {
             print("[PandaVault] Error: \(error)")
+        }
+    }
+
+    private func searchInFolder(query: String) async {
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            displayedAssets = try await api.getFolderAssets(folderId: folder.id, query: query)
+        } catch {
+            print("[PandaVault] Search error: \(error)")
         }
     }
 

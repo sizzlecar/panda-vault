@@ -396,26 +396,50 @@ use crate::api::{AssetDto, AssetRow};
 pub async fn list_folder_assets(
     pool: &PgPool,
     folder_id: Uuid,
+    query: Option<&str>,
     limit: i64,
     offset: i64,
 ) -> anyhow::Result<Vec<AssetDto>> {
-    let rows = sqlx::query_as::<_, AssetRow>(
-        r#"
-        SELECT a.id, a.filename, a.file_path, a.proxy_path, a.thumb_path,
-               a.file_hash, a.size_bytes, a.shoot_at, a.created_at,
-               a.duration_sec, a.width, a.height, a.volume_id
-        FROM asset_folders af
-        JOIN assets a ON a.id = af.asset_id
-        WHERE af.folder_id = $1 AND a.is_deleted = FALSE
-        ORDER BY af.added_at DESC
-        LIMIT $2 OFFSET $3
-        "#,
-    )
-    .bind(folder_id)
-    .bind(limit)
-    .bind(offset)
-    .fetch_all(pool)
-    .await?;
+    let rows = if let Some(q) = query.filter(|s| !s.is_empty()) {
+        let pattern = format!("%{}%", q);
+        sqlx::query_as::<_, AssetRow>(
+            r#"
+            SELECT a.id, a.filename, a.file_path, a.proxy_path, a.thumb_path,
+                   a.file_hash, a.size_bytes, a.shoot_at, a.created_at,
+                   a.duration_sec, a.width, a.height, a.volume_id
+            FROM asset_folders af
+            JOIN assets a ON a.id = af.asset_id
+            WHERE af.folder_id = $1 AND a.is_deleted = FALSE
+              AND a.filename ILIKE $4
+            ORDER BY af.added_at DESC
+            LIMIT $2 OFFSET $3
+            "#,
+        )
+        .bind(folder_id)
+        .bind(limit)
+        .bind(offset)
+        .bind(&pattern)
+        .fetch_all(pool)
+        .await?
+    } else {
+        sqlx::query_as::<_, AssetRow>(
+            r#"
+            SELECT a.id, a.filename, a.file_path, a.proxy_path, a.thumb_path,
+                   a.file_hash, a.size_bytes, a.shoot_at, a.created_at,
+                   a.duration_sec, a.width, a.height, a.volume_id
+            FROM asset_folders af
+            JOIN assets a ON a.id = af.asset_id
+            WHERE af.folder_id = $1 AND a.is_deleted = FALSE
+            ORDER BY af.added_at DESC
+            LIMIT $2 OFFSET $3
+            "#,
+        )
+        .bind(folder_id)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(pool)
+        .await?
+    };
 
     Ok(rows.into_iter().map(AssetDto::from_row).collect())
 }
