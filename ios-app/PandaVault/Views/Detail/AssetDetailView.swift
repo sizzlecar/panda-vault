@@ -15,6 +15,8 @@ struct AssetDetailView: View {
     @State private var isSaving = false
     @State private var showMovePicker = false
     @State private var showMoveAlert = false
+    @State private var showShareSheet = false
+    @State private var shareFileURL: URL?
     @State private var moveMessage = ""
 
     init(assets: [Asset], initialAsset: Asset, api: APIService, onDelete: (() -> Void)? = nil) {
@@ -125,6 +127,11 @@ struct AssetDetailView: View {
                 }
             }
         }
+        .sheet(isPresented: $showShareSheet) {
+            if let url = shareFileURL {
+                ActivityView(items: [url])
+            }
+        }
     }
 
     // MARK: - Top Buttons
@@ -187,6 +194,13 @@ struct AssetDetailView: View {
                     .background(.ultraThinMaterial, in: Circle())
             }
 
+            Button { Task { await shareAsset(asset) } } label: {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.body)
+                    .padding(10)
+                    .background(.ultraThinMaterial, in: Circle())
+            }
+
             Button { showMovePicker = true } label: {
                 Image(systemName: "folder.badge.plus")
                     .font(.body)
@@ -243,6 +257,18 @@ struct AssetDetailView: View {
                     HStack(spacing: 6) {
                         Image(systemName: "square.and.arrow.down")
                         Text("保存到相册")
+                    }
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(.white.opacity(0.15), in: RoundedRectangle(cornerRadius: 10))
+                }
+
+                Button { Task { await shareAsset(asset) } } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "square.and.arrow.up")
+                        Text("分享")
                     }
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(.white)
@@ -314,6 +340,26 @@ struct AssetDetailView: View {
             onDelete?()
             dismiss()
         } catch { print("[PandaVault] Delete error: \(error)") }
+    }
+
+    private func shareAsset(_ asset: Asset) async {
+        isSaving = true
+        defer { isSaving = false }
+        do {
+            let tempURL = try await api.downloadAsset(id: asset.id) { _ in }
+            let ext = (asset.filename as NSString).pathExtension
+            let dest = FileManager.default.temporaryDirectory
+                .appendingPathComponent(asset.filename.isEmpty ? UUID().uuidString : asset.filename)
+            if FileManager.default.fileExists(atPath: dest.path) {
+                try FileManager.default.removeItem(at: dest)
+            }
+            try FileManager.default.moveItem(at: tempURL, to: dest)
+            shareFileURL = dest
+            showShareSheet = true
+        } catch {
+            saveMessage = "下载失败: \(error.localizedDescription)"
+            showSaveAlert = true
+        }
     }
 }
 
