@@ -321,57 +321,34 @@ struct AssetDetailView: View {
 
 struct MoveToFolderView: View {
     let api: APIService
-    let asset: Asset
+    let assetIds: [UUID]
     var onComplete: ((String) -> Void)?
 
+    init(api: APIService, asset: Asset, onComplete: ((String) -> Void)? = nil) {
+        self.api = api
+        self.assetIds = [asset.id]
+        self.onComplete = onComplete
+    }
+
+    init(api: APIService, assetIds: [UUID], onComplete: ((String) -> Void)? = nil) {
+        self.api = api
+        self.assetIds = assetIds
+        self.onComplete = onComplete
+    }
+
     @Environment(\.dismiss) private var dismiss
-    @State private var folders: [Folder] = []
-    @State private var isLoading = false
     @State private var isMoving = false
 
     var body: some View {
         NavigationStack {
-            List {
-                if isLoading {
-                    HStack {
-                        Spacer()
-                        ProgressView().tint(PV.cyan)
-                        Spacer()
-                    }
-                }
-
-                ForEach(folders) { folder in
-                    Button {
-                        Task { await moveToFolder(folder) }
-                    } label: {
-                        HStack {
-                            Image(systemName: "folder.fill")
-                                .foregroundStyle(PV.cyan)
-                            Text(folder.name)
-                                .foregroundStyle(.primary)
-                            Spacer()
-                            if isMoving {
-                                ProgressView().tint(PV.cyan)
-                            }
-                        }
-                    }
-                    .disabled(isMoving)
-                }
+            MoveFolderLevel(api: api, parentId: nil, pathPrefix: "/", assetIds: assetIds, isMoving: $isMoving) { folder in
+                Task { await moveToFolder(folder) }
             }
             .navigationTitle("移动到文件夹")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("取消") { dismiss() }
-                }
-            }
-            .task {
-                isLoading = true
-                defer { isLoading = false }
-                do {
-                    folders = try await api.getFolders()
-                } catch {
-                    print("[PandaVault] Load folders error: \(error)")
                 }
             }
         }
@@ -381,12 +358,101 @@ struct MoveToFolderView: View {
         isMoving = true
         defer { isMoving = false }
         do {
-            try await api.addAssetToFolder(folderId: folder.id, assetId: asset.id)
+            for id in assetIds {
+                try await api.addAssetToFolder(folderId: folder.id, assetId: id)
+            }
             dismiss()
-            onComplete?("已移动到「\(folder.name)」")
+            let count = assetIds.count
+            onComplete?(count == 1 ? "已移动到「\(folder.name)」" : "\(count) 个文件已移动到「\(folder.name)」")
         } catch {
             dismiss()
             onComplete?("移动失败: \(error.localizedDescription)")
+        }
+    }
+}
+
+// MARK: - Move Folder Level (hierarchical)
+
+private struct MoveFolderLevel: View {
+    let api: APIService
+    let parentId: UUID?
+    let pathPrefix: String
+    let assetIds: [UUID]
+    @Binding var isMoving: Bool
+    let onSelect: (Folder) -> Void
+
+    @State private var folders: [Folder] = []
+    @State private var isLoading = false
+
+    var body: some View {
+        List {
+            if parentId != nil {
+                Button {
+                    // 选当前层级需要有个 folder 对象，用父 ID 查
+                } label: {
+                    HStack {
+                        Image(systemName: "checkmark.circle.fill").foregroundStyle(PV.cyan)
+                        Text("移动到此处").foregroundStyle(PV.cyan).fontWeight(.medium)
+                        Spacer()
+                        if isMoving { ProgressView().tint(PV.cyan) }
+                    }
+                }
+                .disabled(isMoving)
+            }
+
+            if isLoading {
+                HStack { Spacer(); ProgressView().tint(PV.cyan); Spacer() }
+            }
+
+            ForEach(folders) { folder in
+                HStack {
+                    // 选择这个文件夹
+                    Button {
+                        onSelect(folder)
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "folder.fill").foregroundStyle(PV.cyan)
+                            Text(folder.name).foregroundStyle(.primary)
+                            if let count = folder.assetCount, count > 0 {
+                                Text("\(count)")
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
+                            }
+                        }
+                    }
+                    .disabled(isMoving)
+
+                    Spacer()
+
+                    // 进入子目录
+                    NavigationLink {
+                        MoveFolderLevel(
+                            api: api,
+                            parentId: folder.id,
+                            pathPrefix: "\(pathPrefix)\(folder.name)/",
+                            assetIds: assetIds,
+                            isMoving: $isMoving,
+                            onSelect: onSelect
+                        )
+                        .navigationTitle(folder.name)
+                    } label: {
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .buttonStyle(.plain)
+                    .frame(width: 30)
+                }
+            }
+        }
+        .task {
+            isLoading = true
+            defer { isLoading = false }
+            do {
+                folders = try await api.getFolders(parentId: parentId)
+            } catch {
+                print("[PandaVault] Load folders error: \(error)")
+            }
         }
     }
 }

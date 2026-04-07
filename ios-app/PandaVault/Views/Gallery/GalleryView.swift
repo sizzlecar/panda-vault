@@ -12,6 +12,11 @@ struct GalleryView: View {
     @State private var isSelecting = false
     @State private var selectedIds: Set<UUID> = []
     @State private var showDeleteConfirm = false
+    @State private var showBatchMove = false
+    @State private var showMoveAlert = false
+    @State private var moveMessage = ""
+    @State private var shareItems: [Any] = []
+    @State private var showShareSheet = false
     @State private var imageSearchItem: PhotosPickerItem?
 
     init() {
@@ -58,10 +63,11 @@ struct GalleryView: View {
                     appState: appState,
                     isSelecting: isSelecting,
                     selectedIds: selectedIds,
-                    showDeleteConfirm: $showDeleteConfirm
-                ) {
-                    batchSaveToPhotos()
-                }
+                    showDeleteConfirm: $showDeleteConfirm,
+                    showBatchMove: $showBatchMove,
+                    onSave: { batchSaveToPhotos() },
+                    onShare: { Task { await batchShare() } }
+                )
             }
             .confirmationDialog(
                 "确定删除 \(selectedIds.count) 个素材？",
@@ -69,6 +75,22 @@ struct GalleryView: View {
                 titleVisibility: .visible
             ) {
                 Button("删除", role: .destructive) { Task { await batchDelete() } }
+            }
+            .sheet(isPresented: $showBatchMove) {
+                MoveToFolderView(api: appState.api, assetIds: Array(selectedIds)) { msg in
+                    moveMessage = msg
+                    showMoveAlert = true
+                    selectedIds.removeAll()
+                    isSelecting = false
+                }
+            }
+            .alert("", isPresented: $showMoveAlert) {
+                Button("好") {}
+            } message: {
+                Text(moveMessage)
+            }
+            .sheet(isPresented: $showShareSheet) {
+                ActivityView(items: shareItems)
             }
         }
         .onAppear { vm.updateAPI(appState.api) }
@@ -135,6 +157,32 @@ struct GalleryView: View {
         isSelecting = false
         await vm.loadTimelineAndAssets()
     }
+
+    private func batchShare() async {
+        let assets = vm.allAssetsOrdered.filter { selectedIds.contains($0.id) }
+        var items: [Any] = []
+        for asset in assets {
+            if let url = appState.api.rawURL(for: asset) {
+                items.append(url)
+            }
+        }
+        if !items.isEmpty {
+            shareItems = items
+            showShareSheet = true
+        }
+        selectedIds.removeAll()
+        isSelecting = false
+    }
+}
+
+// MARK: - Activity View (Share Sheet)
+
+struct ActivityView: UIViewControllerRepresentable {
+    let items: [Any]
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+    func updateUIViewController(_ vc: UIActivityViewController, context: Context) {}
 }
 
 // MARK: - View Mode
@@ -415,7 +463,9 @@ private struct GalleryBottomInset: View {
     let isSelecting: Bool
     let selectedIds: Set<UUID>
     @Binding var showDeleteConfirm: Bool
+    @Binding var showBatchMove: Bool
     let onSave: () -> Void
+    let onShare: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -426,7 +476,9 @@ private struct GalleryBottomInset: View {
                 GalleryBatchToolbar(
                     count: selectedIds.count,
                     showDeleteConfirm: $showDeleteConfirm,
-                    onSave: onSave
+                    showBatchMove: $showBatchMove,
+                    onSave: onSave,
+                    onShare: onShare
                 )
             }
         }
@@ -470,34 +522,37 @@ private struct GalleryDownloadProgress: View {
 private struct GalleryBatchToolbar: View {
     let count: Int
     @Binding var showDeleteConfirm: Bool
+    @Binding var showBatchMove: Bool
     let onSave: () -> Void
+    let onShare: () -> Void
 
     var body: some View {
-        HStack(spacing: 0) {
-            Button(action: onSave) {
-                VStack(spacing: 3) {
-                    Image(systemName: "square.and.arrow.down").font(.body)
-                    Text("保存").font(.system(.caption2, design: .monospaced))
-                }
-                .frame(maxWidth: .infinity)
-                .foregroundStyle(PV.green)
-            }
-            Button { showDeleteConfirm = true } label: {
-                VStack(spacing: 3) {
-                    Image(systemName: "trash").font(.body)
-                    Text("删除").font(.system(.caption2, design: .monospaced))
-                }
-                .frame(maxWidth: .infinity)
-                .foregroundStyle(PV.pink)
-            }
-        }
-        .padding(.vertical, 10)
-        .background(Color(.secondarySystemGroupedBackground))
-        .overlay(alignment: .top) {
+        VStack(spacing: 0) {
+            Divider()
             Text("已选 \(count) 项")
-                .font(.system(.caption2, design: .monospaced))
-                .foregroundStyle(.tertiary)
-                .padding(.top, -14)
+                .font(.system(.caption2, design: .monospaced).bold())
+                .foregroundStyle(.secondary)
+                .padding(.top, 8)
+
+            HStack(spacing: 0) {
+                batchButton(icon: "square.and.arrow.down", label: "保存", color: PV.cyan) { onSave() }
+                batchButton(icon: "folder.badge.plus", label: "移动", color: PV.cyan) { showBatchMove = true }
+                batchButton(icon: "square.and.arrow.up", label: "分享", color: PV.cyan) { onShare() }
+                batchButton(icon: "trash", label: "删除", color: PV.pink) { showDeleteConfirm = true }
+            }
+            .padding(.vertical, 8)
+        }
+        .background(.ultraThinMaterial)
+    }
+
+    private func batchButton(icon: String, label: String, color: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                Image(systemName: icon).font(.title3)
+                Text(label).font(.system(.caption2, design: .monospaced))
+            }
+            .frame(maxWidth: .infinity)
+            .foregroundStyle(color)
         }
     }
 }
