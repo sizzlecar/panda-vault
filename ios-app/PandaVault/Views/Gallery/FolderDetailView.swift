@@ -103,10 +103,27 @@ struct FolderDetailView: View {
     private func searchInFolder(query: String) async {
         isLoading = true
         defer { isLoading = false }
+
+        // 1. 先试语义搜索，从结果中过滤出当前文件夹的资产
+        let folderAssetIds = Set(assets.map(\.id))
         do {
-            displayedAssets = try await api.getFolderAssets(folderId: folder.id, query: query)
+            let semanticResults = try await api.semanticSearch(text: query)
+            let filtered = semanticResults.filter { folderAssetIds.contains($0.id) }
+            if !filtered.isEmpty {
+                displayedAssets = filtered
+                return
+            }
+        } catch {
+            // 语义搜索失败，降级
+        }
+
+        // 2. 降级到文件名搜索
+        do {
+            let fileResults = try await api.getFolderAssets(folderId: folder.id, query: query)
+            displayedAssets = fileResults
         } catch {
             print("[PandaVault] Search error: \(error)")
+            displayedAssets = []
         }
     }
 
