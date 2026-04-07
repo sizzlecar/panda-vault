@@ -251,22 +251,67 @@ private struct GalleryTimelineView: View {
     @Binding var selectedIds: Set<UUID>
     @Binding var selectedAsset: Asset?
 
+    @Namespace private var scrollSpace
+    @State private var scrollTarget: String?
+
     var body: some View {
-        ScrollView {
-            if !vm.searchText.isEmpty || vm.isImageSearchResult {
-                GalleryAssetsGrid(
-                    assets: vm.assets,
-                    api: api,
-                    isSelecting: $isSelecting,
-                    selectedIds: $selectedIds,
-                    selectedAsset: $selectedAsset
-                )
-            } else if vm.timeline.isEmpty && !vm.isLoading {
-                GalleryEmptyState()
-            } else {
-                timelineContent
+        VStack(spacing: 0) {
+            // 月份快速跳转栏
+            if !vm.timeline.isEmpty && vm.searchText.isEmpty && !vm.isImageSearchResult {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(vm.timeline) { group in
+                            Button {
+                                scrollTarget = group.month
+                            } label: {
+                                Text(shortMonth(group.month))
+                                    .font(.system(.caption2, design: .monospaced).bold())
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 5)
+                                    .background(PV.cyan.opacity(0.1), in: Capsule())
+                                    .foregroundStyle(PV.cyan)
+                            }
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.vertical, 6)
+                }
+                .background(Color(.systemBackground))
+            }
+
+            ScrollViewReader { proxy in
+                ScrollView {
+                    if !vm.searchText.isEmpty || vm.isImageSearchResult {
+                        GalleryAssetsGrid(
+                            assets: vm.assets,
+                            api: api,
+                            isSelecting: $isSelecting,
+                            selectedIds: $selectedIds,
+                            selectedAsset: $selectedAsset
+                        )
+                    } else if vm.timeline.isEmpty && !vm.isLoading {
+                        GalleryEmptyState()
+                    } else {
+                        timelineContent
+                    }
+                }
+                .onChange(of: scrollTarget) { _, target in
+                    guard let target else { return }
+                    withAnimation {
+                        proxy.scrollTo(target, anchor: .top)
+                    }
+                    scrollTarget = nil
+                }
             }
         }
+    }
+
+    private func shortMonth(_ month: String) -> String {
+        // "2026-03" → "3月"
+        let parts = month.split(separator: "-")
+        guard parts.count == 2, let m = Int(parts[1]) else { return month }
+        let y = String(parts[0].suffix(2))
+        return "\(y).\(m)月"
     }
 
     private var timelineContent: some View {
@@ -291,6 +336,7 @@ private struct GalleryTimelineView: View {
                     }
                 } header: {
                     TimelineSectionHeader(group: group)
+                        .id(group.month)
                         .onAppear {
                             vm.ensureMonthLoaded(group.month)
                         }
