@@ -43,7 +43,9 @@ struct UploadView: View {
                 Button("创建") { Task { await createFolder() } }
                 Button("取消", role: .cancel) {}
             } message: {
-                Text("位置: \(selectedFolderPath)")
+                let parent = selectedFolderPath == "/ 根目录" ? "/" : selectedFolderPath
+                let preview = newFolderName.isEmpty ? parent : "\(parent)\(newFolderName)/"
+                Text("将创建: \(preview)")
             }
             .alert("", isPresented: $showResultAlert) {
                 Button("好") {}
@@ -185,13 +187,14 @@ struct UploadView: View {
             selectedFolderPath = "\(parentPath)\(folder.name)/"
             resultMessage = "创建成功\n\(selectedFolderPath)"
             newFolderName = ""
-        } catch {
-            let errMsg = error.localizedDescription
-            if errMsg.contains("duplicate") || errMsg.contains("unique") {
+        } catch let error as APIError {
+            if case .httpError(let code) = error, code == 409 {
                 resultMessage = "同名文件夹已存在"
             } else {
-                resultMessage = "创建失败: \(errMsg)"
+                resultMessage = "创建失败: \(error.localizedDescription)"
             }
+        } catch {
+            resultMessage = "创建失败: \(error.localizedDescription)"
         }
         showResultAlert = true
     }

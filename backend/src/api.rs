@@ -1133,7 +1133,15 @@ async fn create_folder(
 ) -> Response {
     match folder::create_folder(&state.pool, &state.cfg, req).await {
         Ok(f) => (StatusCode::CREATED, Json(f)).into_response(),
-        Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+        Err(e) => {
+            let msg = e.to_string();
+            let status = if msg.contains("同名文件夹已存在") {
+                StatusCode::CONFLICT
+            } else {
+                StatusCode::INTERNAL_SERVER_ERROR
+            };
+            json_err(status, msg).into_response()
+        }
     }
 }
 
