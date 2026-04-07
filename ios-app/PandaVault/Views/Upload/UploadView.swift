@@ -47,7 +47,7 @@ struct UploadView: View {
                     selectedFolderId: $selectedFolderId,
                     selectedFolderPath: $selectedFolderPath
                 )
-                .presentationDetents([.height(260)])
+                .presentationDetents([.medium])
             }
             .alert("", isPresented: $showResultAlert) {
                 Button("好") {}
@@ -507,6 +507,7 @@ private struct CreateFolderSheet: View {
                     .frame(maxWidth: .infinity)
 
                 Button(isCreating ? "创建中..." : "创建") {
+                    print("[PandaVault] 创建按钮被点击, name=\(folderName), parentId=\(String(describing: parentId))")
                     Task { await doCreate() }
                 }
                 .fontWeight(.semibold)
@@ -522,12 +523,15 @@ private struct CreateFolderSheet: View {
     }
 
     private func doCreate() async {
-        guard !trimmedName.isEmpty else { return }
+        print("[PandaVault] doCreate called, trimmedName=\(trimmedName), parentId=\(String(describing: parentId))")
+        guard !trimmedName.isEmpty else { print("[PandaVault] name is empty, returning"); return }
         isCreating = true
         statusMsg = ""
         defer { isCreating = false }
         do {
+            print("[PandaVault] calling api.createFolder...")
             let folder = try await api.createFolder(name: trimmedName, parentId: parentId)
+            print("[PandaVault] created: \(folder.name)")
             selectedFolderId = folder.id
             selectedFolderPath = previewPath
             folderName = ""
