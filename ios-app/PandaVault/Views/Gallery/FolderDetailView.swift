@@ -19,16 +19,59 @@ struct FolderDetailView: View {
 
     @State private var searchTask: Task<Void, Never>?
 
+    // 面包屑导航
+    @State private var breadcrumbs: [(name: String, id: UUID)] = []
+    @State private var currentFolder: Folder?
+
+    private var activeFolder: Folder { currentFolder ?? folder }
+
     var body: some View {
-        FolderDetailContent(
-            subfolders: subfolders,
-            filteredAssets: displayedAssets,
-            isLoading: isLoading,
-            searchText: searchText,
-            api: api,
-            selectedAsset: $selectedAsset
-        )
-        .navigationTitle(folder.name)
+        VStack(spacing: 0) {
+            // 面包屑（多层时显示）
+            if !breadcrumbs.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 4) {
+                        Button(folder.name) {
+                            breadcrumbs.removeAll()
+                            currentFolder = nil
+                            Task { await navigateToFolder(folder) }
+                        }
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.secondary)
+
+                        ForEach(Array(breadcrumbs.enumerated()), id: \.offset) { idx, crumb in
+                            Text("/").font(.caption2).foregroundStyle(.tertiary)
+                            Button(crumb.name) {
+                                breadcrumbs = Array(breadcrumbs.prefix(idx + 1))
+                                if let target = breadcrumbs.last {
+                                    Task { await navigateById(target.id) }
+                                }
+                            }
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(idx == breadcrumbs.count - 1 ? PV.cyan : .secondary)
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.vertical, 6)
+                }
+                .background(Color(.secondarySystemGroupedBackground))
+            }
+
+            FolderDetailContent(
+                subfolders: subfolders,
+                filteredAssets: displayedAssets,
+                isLoading: isLoading,
+                searchText: searchText,
+                api: api,
+                selectedAsset: $selectedAsset,
+                onSubfolderTap: { subfolder in
+                    breadcrumbs.append((subfolder.name, subfolder.id))
+                    currentFolder = subfolder
+                    Task { await navigateToFolder(subfolder) }
+                }
+            )
+        }
+        .navigationTitle(activeFolder.name)
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "在「\(folder.name)」中搜索...")
         .onChange(of: searchText) { _, newValue in
             searchTask?.cancel()
@@ -83,7 +126,7 @@ struct FolderDetailView: View {
 
     private func loadSubfolders() async {
         do {
-            subfolders = try await api.getFolders(parentId: folder.id)
+            subfolders = try await api.getFolders(parentId: activeFolder.id)
         } catch {
             print("[PandaVault] Subfolders error: \(error)")
         }
@@ -93,10 +136,28 @@ struct FolderDetailView: View {
         isLoading = true
         defer { isLoading = false }
         do {
-            assets = try await api.getFolderAssets(folderId: folder.id)
+            assets = try await api.getFolderAssets(folderId: activeFolder.id)
             displayedAssets = assets
         } catch {
             print("[PandaVault] Error: \(error)")
+        }
+    }
+
+    private func navigateToFolder(_ target: Folder) async {
+        searchText = ""
+        await loadSubfolders()
+        await loadFolderAssets()
+    }
+
+    private func navigateById(_ id: UUID) async {
+        // 简单起见直接用 id 加载
+        searchText = ""
+        do {
+            subfolders = try await api.getFolders(parentId: id)
+            assets = try await api.getFolderAssets(folderId: id)
+            displayedAssets = assets
+        } catch {
+            print("[PandaVault] Navigate error: \(error)")
         }
     }
 
@@ -104,7 +165,6 @@ struct FolderDetailView: View {
         isLoading = true
         defer { isLoading = false }
 
-        // 1. 先试语义搜索，从结果中过滤出当前文件夹的资产
         let folderAssetIds = Set(assets.map(\.id))
         do {
             let semanticResults = try await api.semanticSearch(text: query)
@@ -113,13 +173,10 @@ struct FolderDetailView: View {
                 displayedAssets = filtered
                 return
             }
-        } catch {
-            // 语义搜索失败，降级
-        }
+        } catch {}
 
-        // 2. 降级到文件名搜索
         do {
-            let fileResults = try await api.getFolderAssets(folderId: folder.id, query: query)
+            let fileResults = try await api.getFolderAssets(folderId: activeFolder.id, query: query)
             displayedAssets = fileResults
         } catch {
             print("[PandaVault] Search error: \(error)")
@@ -155,6 +212,7 @@ private struct FolderDetailContent: View {
     let searchText: String
     let api: APIService
     @Binding var selectedAsset: Asset?
+    var onSubfolderTap: ((Folder) -> Void)?
 
     private let columns = [
         GridItem(.adaptive(minimum: 110, maximum: 200), spacing: 2)
@@ -162,11 +220,12 @@ private struct FolderDetailContent: View {
 
     var body: some View {
         ScrollView {
-            // 子文件夹
             if !subfolders.isEmpty {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 150, maximum: 200), spacing: 12)], spacing: 12) {
                     ForEach(subfolders) { subfolder in
-                        NavigationLink(destination: FolderDetailView(folder: subfolder, api: api)) {
+                        Button {
+                            onSubfolderTap?(subfolder)
+                        } label: {
                             VStack(spacing: 6) {
                                 Image(systemName: "folder.fill")
                                     .font(.title)
