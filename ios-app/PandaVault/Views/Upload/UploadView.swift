@@ -169,9 +169,10 @@ struct UploadView: View {
     private func createFolder() async {
         guard !newFolderName.trimmingCharacters(in: .whitespaces).isEmpty else { return }
         do {
-            let folder = try await appState.api.createFolder(name: newFolderName)
-            folders.insert(folder, at: 0)
+            // 在当前选中的文件夹下创建子文件夹
+            let folder = try await appState.api.createFolder(name: newFolderName, parentId: selectedFolderId)
             selectedFolderId = folder.id
+            selectedFolderPath = (selectedFolderPath == "/ 根目录" ? "" : selectedFolderPath) + " / " + folder.name
         } catch { print("[PandaVault] Error: \(error)") }
     }
 

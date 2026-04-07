@@ -403,7 +403,7 @@ pub async fn list_folder_assets(
         r#"
         SELECT a.id, a.filename, a.file_path, a.proxy_path, a.thumb_path,
                a.file_hash, a.size_bytes, a.shoot_at, a.created_at,
-               a.duration_sec, a.width, a.height
+               a.duration_sec, a.width, a.height, a.volume_id
         FROM asset_folders af
         JOIN assets a ON a.id = af.asset_id
         WHERE af.folder_id = $1 AND a.is_deleted = FALSE
