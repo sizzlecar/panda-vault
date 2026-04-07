@@ -12,6 +12,8 @@ struct UploadView: View {
     @State private var showFolderPicker = false
     @State private var showNewFolderAlert = false
     @State private var newFolderName = ""
+    @State private var showResultAlert = false
+    @State private var resultMessage = ""
     @State private var isExporting = false
     @State private var exportProgress = ""
 
@@ -40,6 +42,13 @@ struct UploadView: View {
                 TextField("文件夹名称", text: $newFolderName)
                 Button("创建") { Task { await createFolder() } }
                 Button("取消", role: .cancel) {}
+            } message: {
+                Text("位置: \(selectedFolderPath)")
+            }
+            .alert("", isPresented: $showResultAlert) {
+                Button("好") {}
+            } message: {
+                Text(resultMessage)
             }
         }
         .photosPicker(
@@ -169,11 +178,16 @@ struct UploadView: View {
     private func createFolder() async {
         guard !newFolderName.trimmingCharacters(in: .whitespaces).isEmpty else { return }
         do {
-            // 在当前选中的文件夹下创建子文件夹
             let folder = try await appState.api.createFolder(name: newFolderName, parentId: selectedFolderId)
             selectedFolderId = folder.id
             selectedFolderPath = (selectedFolderPath == "/ 根目录" ? "" : selectedFolderPath) + " / " + folder.name
-        } catch { print("[PandaVault] Error: \(error)") }
+            let fullPath = selectedFolderPath == "/ 根目录" ? "/ \(folder.name)" : "\(selectedFolderPath)"
+            resultMessage = "创建成功\n\(fullPath)"
+            newFolderName = ""
+        } catch {
+            resultMessage = "创建失败: \(error.localizedDescription)"
+        }
+        showResultAlert = true
     }
 
     private func handleSelection() async {
