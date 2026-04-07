@@ -112,7 +112,7 @@ struct UploadView: View {
             PixelSectionHeader(title: "目标位置")
         }
         .sheet(isPresented: $showFolderPicker) {
-            FolderPickerView(api: appState.api, selectedFolderId: $selectedFolderId, selectedFolderPath: $selectedFolderPath)
+            FolderPickerView(api: appState.api, selectedFolderId: $selectedFolderId, selectedFolderPath: $selectedFolderPath, isPresented: $showFolderPicker)
         }
     }
 
@@ -315,16 +315,16 @@ struct FolderPickerView: View {
     let api: APIService
     @Binding var selectedFolderId: UUID?
     @Binding var selectedFolderPath: String
-    @Environment(\.dismiss) private var dismiss
+    @Binding var isPresented: Bool
 
     var body: some View {
         NavigationStack {
-            FolderPickerLevel(api: api, parentId: nil, pathPrefix: "/", selectedFolderId: $selectedFolderId, selectedFolderPath: $selectedFolderPath, dismiss: dismiss)
+            FolderPickerLevel(api: api, parentId: nil, pathPrefix: "/", selectedFolderId: $selectedFolderId, selectedFolderPath: $selectedFolderPath, isPresented: $isPresented)
                 .navigationTitle("选择文件夹")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
-                        Button("取消") { dismiss() }
+                        Button("取消") { isPresented = false }
                     }
                 }
         }
@@ -337,18 +337,17 @@ private struct FolderPickerLevel: View {
     let pathPrefix: String
     @Binding var selectedFolderId: UUID?
     @Binding var selectedFolderPath: String
-    let dismiss: DismissAction
+    @Binding var isPresented: Bool
 
     @State private var folders: [Folder] = []
     @State private var isLoading = false
 
     var body: some View {
         List {
-            // Option to select the current level
             Button {
                 selectedFolderId = parentId
                 selectedFolderPath = parentId == nil ? "/ 根目录" : pathPrefix
-                dismiss()
+                isPresented = false
             } label: {
                 HStack {
                     Image(systemName: "checkmark")
@@ -360,11 +359,7 @@ private struct FolderPickerLevel: View {
             }
 
             if isLoading {
-                HStack {
-                    Spacer()
-                    ProgressView().tint(PV.cyan)
-                    Spacer()
-                }
+                HStack { Spacer(); ProgressView().tint(PV.cyan); Spacer() }
             }
 
             ForEach(folders) { folder in
@@ -375,7 +370,7 @@ private struct FolderPickerLevel: View {
                         pathPrefix: "\(pathPrefix)\(folder.name)/",
                         selectedFolderId: $selectedFolderId,
                         selectedFolderPath: $selectedFolderPath,
-                        dismiss: dismiss
+                        isPresented: $isPresented
                     )
                     .navigationTitle(folder.name)
                 } label: {
@@ -383,8 +378,7 @@ private struct FolderPickerLevel: View {
                         Image(systemName: "checkmark")
                             .foregroundStyle(selectedFolderId == folder.id ? PV.cyan : .clear)
                             .frame(width: 20)
-                        Image(systemName: "folder.fill")
-                            .foregroundStyle(PV.cyan)
+                        Image(systemName: "folder.fill").foregroundStyle(PV.cyan)
                         Text(folder.name)
                     }
                 }
