@@ -41,10 +41,15 @@ struct UploadView: View {
             .sheet(isPresented: $showNewFolderAlert) {
                 CreateFolderSheet(
                     parentPath: selectedFolderPath == "/ 根目录" ? "/" : selectedFolderPath,
+                    api: appState.api,
+                    parentId: selectedFolderId,
                     folderName: $newFolderName,
-                    onCreate: { Task { await createFolder() } }
+                    selectedFolderId: $selectedFolderId,
+                    selectedFolderPath: $selectedFolderPath,
+                    showResultAlert: $showResultAlert,
+                    resultMessage: $resultMessage
                 )
-                .presentationDetents([.height(220)])
+                .presentationDetents([.height(240)])
             }
             .alert("", isPresented: $showResultAlert) {
                 Button("好") {}
@@ -174,28 +179,6 @@ struct UploadView: View {
         do {
             folders = try await appState.api.getFolders()
         } catch { print("[PandaVault] Error: \(error)") }
-    }
-
-    private func createFolder() async {
-        let name = newFolderName.trimmingCharacters(in: .whitespaces)
-        guard !name.isEmpty else { return }
-        do {
-            let folder = try await appState.api.createFolder(name: name, parentId: selectedFolderId)
-            let parentPath = selectedFolderPath == "/ 根目录" ? "/" : selectedFolderPath
-            selectedFolderId = folder.id
-            selectedFolderPath = "\(parentPath)\(folder.name)/"
-            resultMessage = "创建成功\n\(selectedFolderPath)"
-            newFolderName = ""
-        } catch let error as APIError {
-            if case .httpError(let code) = error, code == 409 {
-                resultMessage = "同名文件夹已存在"
-            } else {
-                resultMessage = "创建失败: \(error.localizedDescription)"
-            }
-        } catch {
-            resultMessage = "创建失败: \(error.localizedDescription)"
-        }
-        showResultAlert = true
     }
 
     private func handleSelection() async {
@@ -470,15 +453,20 @@ struct UploadProgressSummary: View {
 
 private struct CreateFolderSheet: View {
     let parentPath: String
+    let api: APIService
+    let parentId: UUID?
     @Binding var folderName: String
-    let onCreate: () -> Void
+    @Binding var selectedFolderId: UUID?
+    @Binding var selectedFolderPath: String
+    @Binding var showResultAlert: Bool
+    @Binding var resultMessage: String
     @Environment(\.dismiss) private var dismiss
     @FocusState private var isFocused: Bool
+    @State private var isCreating = false
 
     private var previewPath: String {
-        folderName.trimmingCharacters(in: .whitespaces).isEmpty
-            ? parentPath
-            : "\(parentPath)\(folderName.trimmingCharacters(in: .whitespaces))/"
+        let name = folderName.trimmingCharacters(in: .whitespaces)
+        return name.isEmpty ? parentPath : "\(parentPath)\(name)/"
     }
 
     var body: some View {
@@ -505,19 +493,42 @@ private struct CreateFolderSheet: View {
                     .frame(maxWidth: .infinity)
 
                 Button("创建") {
-                    onCreate()
-                    dismiss()
+                    Task { await doCreate() }
                 }
                 .fontWeight(.semibold)
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 10)
-                .background(PV.cyan, in: RoundedRectangle(cornerRadius: 8))
-                .disabled(folderName.trimmingCharacters(in: .whitespaces).isEmpty)
+                .background(isCreating ? .gray : PV.cyan, in: RoundedRectangle(cornerRadius: 8))
+                .disabled(folderName.trimmingCharacters(in: .whitespaces).isEmpty || isCreating)
                 .opacity(folderName.trimmingCharacters(in: .whitespaces).isEmpty ? 0.5 : 1)
             }
         }
         .padding(20)
         .onAppear { isFocused = true }
+    }
+
+    private func doCreate() async {
+        let name = folderName.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return }
+        isCreating = true
+        do {
+            let folder = try await api.createFolder(name: name, parentId: parentId)
+            selectedFolderId = folder.id
+            selectedFolderPath = previewPath
+            resultMessage = "创建成功\n\(previewPath)"
+            folderName = ""
+        } catch let error as APIError {
+            if case .httpError(let code) = error, code == 409 {
+                resultMessage = "同名文件夹已存在"
+            } else {
+                resultMessage = "创建失败: \(error.localizedDescription)"
+            }
+        } catch {
+            resultMessage = "创建失败: \(error.localizedDescription)"
+        }
+        isCreating = false
+        showResultAlert = true
+        dismiss()
     }
 }

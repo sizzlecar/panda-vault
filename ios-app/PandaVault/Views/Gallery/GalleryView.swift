@@ -160,14 +160,22 @@ struct GalleryView: View {
 
     private func batchShare() async {
         let assets = vm.allAssetsOrdered.filter { selectedIds.contains($0.id) }
-        var items: [Any] = []
+        var localFiles: [Any] = []
         for asset in assets {
-            if let url = appState.api.rawURL(for: asset) {
-                items.append(url)
+            do {
+                let tempURL = try await appState.api.downloadAsset(id: asset.id) { _ in }
+                let ext = (asset.filename as NSString).pathExtension
+                let dest = FileManager.default.temporaryDirectory
+                    .appendingPathComponent(UUID().uuidString)
+                    .appendingPathExtension(ext.isEmpty ? "bin" : ext)
+                try FileManager.default.moveItem(at: tempURL, to: dest)
+                localFiles.append(dest)
+            } catch {
+                print("[PandaVault] Download for share failed: \(error)")
             }
         }
-        if !items.isEmpty {
-            shareItems = items
+        if !localFiles.isEmpty {
+            shareItems = localFiles
             showShareSheet = true
         }
         selectedIds.removeAll()
