@@ -171,6 +171,28 @@ async fn try_run_transcode_job(state: &AppState) -> anyhow::Result<bool> {
     let ext = guess_proxy_ext(&input_abs);
     let is_video = ext != "webp";
 
+    // 补生成缩略图（scan 时可能因缺 ffmpeg 而失败）
+    let need_thumb: bool = sqlx::query_scalar::<_, bool>(
+        "SELECT thumb_path IS NULL FROM assets WHERE id = $1"
+    )
+    .bind(job.asset_id)
+    .fetch_one(&state.pool)
+    .await
+    .unwrap_or(false);
+
+    if need_thumb {
+        let thumb_rel = format!("/proxies/{:04}/{:02}/{}_thumb.jpg", yyyy, mm, job.asset_id);
+        let thumb_abs = state.cfg.resolve_under_root(&thumb_rel);
+        Config::ensure_parent(&thumb_abs)?;
+        if media::try_generate_thumbnail(&state.cfg, &input_abs, &thumb_abs).await.is_ok() {
+            sqlx::query("UPDATE assets SET thumb_path = $2 WHERE id = $1")
+                .bind(job.asset_id)
+                .bind(&thumb_rel)
+                .execute(&state.pool)
+                .await?;
+        }
+    }
+
     let transcode_res = if is_video {
         // 视频不转码，直接标记成功，播放时用原始文件
         Ok(())

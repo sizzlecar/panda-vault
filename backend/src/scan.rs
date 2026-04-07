@@ -339,27 +339,29 @@ async fn ensure_folder_chain(
 
         let fs_name = crate::config::Config::sanitize_fs_name(part);
 
-        // UPSERT：同一 parent 下同名不重复创建
-        let folder_id = Uuid::new_v4();
-        let row: (Uuid,) = sqlx::query_as(
-            r#"
-            INSERT INTO folders (id, name, fs_name, fs_path, parent_id)
-            VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT ON CONSTRAINT idx_folders_parent_fsname
-            DO UPDATE SET updated_at = NOW()
-            RETURNING id
-            "#,
-        )
-        .bind(folder_id)
-        .bind(*part)
-        .bind(&fs_name)
-        .bind(&accumulated)
-        .bind(parent_id)
-        .fetch_one(pool)
-        .await?;
+        // 先查后插：同一 parent + fs_name 不重复
+        let existing: Option<(Uuid,)> = if let Some(pid) = parent_id {
+            sqlx::query_as("SELECT id FROM folders WHERE parent_id = $1 AND fs_name = $2 AND is_deleted = FALSE")
+                .bind(pid).bind(&fs_name).fetch_optional(pool).await?
+        } else {
+            sqlx::query_as("SELECT id FROM folders WHERE parent_id IS NULL AND fs_name = $1 AND is_deleted = FALSE")
+                .bind(&fs_name).fetch_optional(pool).await?
+        };
 
-        cache.insert(accumulated.clone(), row.0);
-        parent_id = Some(row.0);
+        let row_id = if let Some((id,)) = existing {
+            id
+        } else {
+            let folder_id = Uuid::new_v4();
+            sqlx::query(
+                "INSERT INTO folders (id, name, fs_name, fs_path, parent_id) VALUES ($1, $2, $3, $4, $5)"
+            )
+            .bind(folder_id).bind(*part).bind(&fs_name).bind(&accumulated).bind(parent_id)
+            .execute(pool).await?;
+            folder_id
+        };
+
+        cache.insert(accumulated.clone(), row_id);
+        parent_id = Some(row_id);
     }
 
     parent_id.ok_or_else(|| anyhow::anyhow!("空路径"))
@@ -383,6 +385,12 @@ async fn hash_file_streaming(path: &Path) -> anyhow::Result<(String, u64)> {
 }
 
 fn is_media_file(path: &Path) -> bool {
+    // 跳过 macOS 资源分叉文件 ._ 和 .DS_Store
+    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+        if name.starts_with("._") || name == ".DS_Store" {
+            return false;
+        }
+    }
     path.extension()
         .and_then(|e| e.to_str())
         .map(|e| MEDIA_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))

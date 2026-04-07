@@ -8,6 +8,7 @@ struct FolderDetailView: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var assets: [Asset] = []
+    @State private var subfolders: [Folder] = []
     @State private var isLoading = false
     @State private var searchText = ""
     @State private var selectedAsset: Asset?
@@ -22,6 +23,7 @@ struct FolderDetailView: View {
 
     var body: some View {
         FolderDetailContent(
+            subfolders: subfolders,
             filteredAssets: filteredAssets,
             isLoading: isLoading,
             searchText: searchText,
@@ -57,11 +59,25 @@ struct FolderDetailView: View {
             Button("确定") { Task { await renameFolder() } }
             Button("取消", role: .cancel) {}
         }
-        .task { await loadFolderAssets() }
-        .refreshable { await loadFolderAssets() }
+        .task {
+            await loadSubfolders()
+            await loadFolderAssets()
+        }
+        .refreshable {
+            await loadSubfolders()
+            await loadFolderAssets()
+        }
     }
 
     // MARK: - Actions
+
+    private func loadSubfolders() async {
+        do {
+            subfolders = try await api.getFolders(parentId: folder.id)
+        } catch {
+            print("[PandaVault] Subfolders error: \(error)")
+        }
+    }
 
     private func loadFolderAssets() async {
         isLoading = true
@@ -95,6 +111,7 @@ struct FolderDetailView: View {
 // MARK: - Content
 
 private struct FolderDetailContent: View {
+    let subfolders: [Folder]
     let filteredAssets: [Asset]
     let isLoading: Bool
     let searchText: String
@@ -107,9 +124,37 @@ private struct FolderDetailContent: View {
 
     var body: some View {
         ScrollView {
-            if filteredAssets.isEmpty && !isLoading {
+            // 子文件夹
+            if !subfolders.isEmpty {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150, maximum: 200), spacing: 12)], spacing: 12) {
+                    ForEach(subfolders) { subfolder in
+                        NavigationLink(destination: FolderDetailView(folder: subfolder, api: api)) {
+                            VStack(spacing: 6) {
+                                Image(systemName: "folder.fill")
+                                    .font(.title)
+                                    .foregroundStyle(PV.cyan)
+                                Text(subfolder.name)
+                                    .font(.system(.caption, design: .monospaced))
+                                    .lineLimit(1)
+                                    .foregroundStyle(.primary)
+                                Text("\(subfolder.assetCount ?? 0)")
+                                    .font(.system(.caption2, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
+                        }
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+            }
+
+            // 资产网格
+            if filteredAssets.isEmpty && subfolders.isEmpty && !isLoading {
                 FolderDetailEmptyState(hasSearch: !searchText.isEmpty)
-            } else {
+            } else if !filteredAssets.isEmpty {
                 assetsGrid
             }
             if isLoading {
