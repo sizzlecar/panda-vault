@@ -87,8 +87,8 @@ pub async fn create_folder(pool: &PgPool, cfg: &Config, req: CreateFolderRequest
     tokio::fs::create_dir_all(&dir_abs).await?;
     tracing::info!("创建文件夹目录: {}", dir_abs.display());
 
-    // 5. 写入数据库
-    sqlx::query(
+    // 5. 写入数据库（检查同名冲突）
+    let result = sqlx::query(
         r#"
         INSERT INTO folders (id, name, description, parent_id, created_by, fs_name, fs_path)
         VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -102,7 +102,15 @@ pub async fn create_folder(pool: &PgPool, cfg: &Config, req: CreateFolderRequest
     .bind(&fs_name)
     .bind(&fs_path)
     .execute(pool)
-    .await?;
+    .await;
+
+    if let Err(e) = result {
+        let msg = e.to_string();
+        if msg.contains("duplicate") || msg.contains("unique") {
+            anyhow::bail!("同名文件夹已存在: {}", req.name);
+        }
+        return Err(e.into());
+    }
 
     get_folder(pool, folder_id).await
 }

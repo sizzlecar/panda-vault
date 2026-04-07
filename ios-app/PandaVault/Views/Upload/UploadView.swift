@@ -176,16 +176,22 @@ struct UploadView: View {
     }
 
     private func createFolder() async {
-        guard !newFolderName.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        let name = newFolderName.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return }
         do {
-            let folder = try await appState.api.createFolder(name: newFolderName, parentId: selectedFolderId)
+            let folder = try await appState.api.createFolder(name: name, parentId: selectedFolderId)
+            let parentPath = selectedFolderPath == "/ 根目录" ? "/" : selectedFolderPath
             selectedFolderId = folder.id
-            selectedFolderPath = (selectedFolderPath == "/ 根目录" ? "" : selectedFolderPath) + " / " + folder.name
-            let fullPath = selectedFolderPath == "/ 根目录" ? "/ \(folder.name)" : "\(selectedFolderPath)"
-            resultMessage = "创建成功\n\(fullPath)"
+            selectedFolderPath = "\(parentPath)\(folder.name)/"
+            resultMessage = "创建成功\n\(selectedFolderPath)"
             newFolderName = ""
         } catch {
-            resultMessage = "创建失败: \(error.localizedDescription)"
+            let errMsg = error.localizedDescription
+            if errMsg.contains("duplicate") || errMsg.contains("unique") {
+                resultMessage = "同名文件夹已存在"
+            } else {
+                resultMessage = "创建失败: \(errMsg)"
+            }
         }
         showResultAlert = true
     }
