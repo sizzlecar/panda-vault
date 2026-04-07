@@ -512,23 +512,35 @@ private struct CreateFolderSheet: View {
         let name = folderName.trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty else { return }
         isCreating = true
+        defer { isCreating = false }
         do {
+            print("[PandaVault] Creating folder: \(name) under parentId: \(String(describing: parentId))")
             let folder = try await api.createFolder(name: name, parentId: parentId)
+            print("[PandaVault] Created folder: \(folder.name) id: \(folder.id)")
             selectedFolderId = folder.id
             selectedFolderPath = previewPath
             resultMessage = "创建成功\n\(previewPath)"
             folderName = ""
+            dismiss()
+            // delay to let sheet dismiss before showing alert
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            showResultAlert = true
         } catch let error as APIError {
             if case .httpError(let code) = error, code == 409 {
                 resultMessage = "同名文件夹已存在"
             } else {
                 resultMessage = "创建失败: \(error.localizedDescription)"
             }
+            print("[PandaVault] Create folder error: \(error)")
+            dismiss()
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            showResultAlert = true
         } catch {
             resultMessage = "创建失败: \(error.localizedDescription)"
+            print("[PandaVault] Create folder error: \(error)")
+            dismiss()
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            showResultAlert = true
         }
-        isCreating = false
-        showResultAlert = true
-        dismiss()
     }
 }
