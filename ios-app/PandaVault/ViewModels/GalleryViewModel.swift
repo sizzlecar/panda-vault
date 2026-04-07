@@ -10,74 +10,37 @@ final class GalleryViewModel: ObservableObject {
     @Published var timeline: [TimelineGroup] = []
     @Published var folders: [Folder] = []
 
+    /// 每月资产的加载状态，用于驱动 UI 显示 loading indicator
+    @Published var monthLoadingStates: [String: MonthLoadState] = [:]
+
     var api: APIService
     private let pageSize = 50
 
-    // 按月分组的资产缓存
+    // 按月分组的资产缓存（已加载的月份）
     private var monthlyAssets: [String: [Asset]] = [:]
+    // 正在加载的月份（防止并发重复请求）
+    private var monthsInFlight: Set<String> = []
+
+    enum MonthLoadState {
+        case idle
+        case loading
+        case loaded
+        case failed
+    }
 
     init(api: APIService) {
         self.api = api
     }
 
-    // MARK: - Assets
+    // MARK: - Timeline (lightweight, only loads month + count)
 
-    func loadAssets(refresh: Bool = false) async {
-        guard !isLoading else { return }
-        if !refresh && !hasMore { return }
-
+    /// 只加载 timeline 元数据（月 + 数量），不加载任何资产
+    func loadTimeline() async {
         isLoading = true
         defer { isLoading = false }
-
-        if refresh {
-            // 全量加载所有资产（分页循环直到取完）
-            var all: [Asset] = []
-            var offset = 0
-            while true {
-                do {
-                    let batch = try await api.getAssets(limit: 200, offset: offset)
-                    all.append(contentsOf: batch)
-                    if batch.count < 200 { break }
-                    offset += batch.count
-                } catch {
-                    print("[PandaVault] Error: \(error)")
-                    break
-                }
-            }
-            assets = all
-            rebuildMonthlyCache(all)
-            hasMore = false
-        } else {
-            let offset = assets.count
-            do {
-                let newAssets = try await api.getAssets(limit: pageSize, offset: offset)
-                assets.append(contentsOf: newAssets)
-                appendToMonthlyCache(assets: newAssets)
-                hasMore = newAssets.count >= pageSize
-            } catch { print("[PandaVault] Error: \(error)") }
-        }
-    }
-
-    // MARK: - Timeline
-
-    /// 同时加载 timeline + 所有 assets，一起更新 UI 避免中间态
-    func loadTimelineAndAssets() async {
-        isLoading = true
-        defer { isLoading = false }
-
-        // 并发加载 timeline 和 assets
-        async let timelineTask = api.getTimeline()
-        async let assetsTask = loadAllAssets()
-
-        // 等两个都完成
-        let allAssets = await assetsTask
-        assets = allAssets
-        rebuildMonthlyCache(allAssets)
-        hasMore = false
-        isImageSearchResult = false
 
         do {
-            let days = try await timelineTask
+            let days = try await api.getTimeline()
             var monthMap: [String: Int] = [:]
             var monthOrder: [String] = []
             for d in days {
@@ -88,50 +51,55 @@ final class GalleryViewModel: ObservableObject {
             timeline = monthOrder.map { m in
                 TimelineGroup(day: m, count: monthMap[m] ?? 0)
             }
+            isImageSearchResult = false
         } catch { print("[PandaVault] loadTimeline error: \(error)") }
     }
 
-    private func loadAllAssets() async -> [Asset] {
-        var all: [Asset] = []
-        var offset = 0
-        while true {
-            do {
-                let batch = try await api.getAssets(limit: 200, offset: offset)
-                all.append(contentsOf: batch)
-                if batch.count < 200 { break }
-                offset += batch.count
-            } catch {
-                print("[PandaVault] loadAssets error: \(error)")
-                break
-            }
-        }
-        return all
+    /// 兼容旧调用点：pull-to-refresh 和 server URL 变更时使用
+    func loadTimelineAndAssets() async {
+        // 清除缓存，重新加载 timeline，可见月份会按需重新加载
+        monthlyAssets = [:]
+        monthsInFlight = []
+        monthLoadingStates = [:]
+        await loadTimeline()
     }
 
-    func loadTimeline() async {
-        // 保留兼容，实际用 loadTimelineAndAssets
-        await loadTimelineAndAssets()
+    // MARK: - Per-Month Lazy Loading
+
+    /// 确保某月的资产已加载。由 View 的 onAppear 调用。
+    func ensureMonthLoaded(_ month: String) {
+        // 已缓存或正在加载中 → 跳过
+        if monthlyAssets[month] != nil || monthsInFlight.contains(month) { return }
+
+        monthsInFlight.insert(month)
+        monthLoadingStates[month] = .loading
+
+        Task {
+            do {
+                let assets = try await api.getAssetsByMonth(month: month)
+                monthlyAssets[month] = assets
+                monthLoadingStates[month] = .loaded
+            } catch {
+                print("[PandaVault] loadMonth(\(month)) error: \(error)")
+                monthLoadingStates[month] = .failed
+            }
+            monthsInFlight.remove(month)
+            // 触发 UI 更新（monthlyAssets 不是 @Published，需手动触发）
+            objectWillChange.send()
+        }
     }
 
     func assetsForMonth(_ month: String) -> [Asset] {
         monthlyAssets[month] ?? []
     }
 
-    /// 按时间轴顺序排列的所有资产（用于详情页左右滑动）
+    func isMonthLoading(_ month: String) -> Bool {
+        monthLoadingStates[month] == .loading
+    }
+
+    /// 按时间轴顺序排列的所有 *已加载* 资产（用于详情页左右滑动）
     var allAssetsOrdered: [Asset] {
         timeline.flatMap { assetsForMonth($0.month) }
-    }
-
-    private func rebuildMonthlyCache(_ all: [Asset]) {
-        monthlyAssets = [:]
-        appendToMonthlyCache(assets: all)
-    }
-
-    private func appendToMonthlyCache(assets list: [Asset]) {
-        for asset in list {
-            let month = monthForAsset(asset)
-            monthlyAssets[month, default: []].append(asset)
-        }
     }
 
     /// 用 shootAt 优先（和后端 timeline 一致），fallback 到 createdAt
@@ -143,11 +111,41 @@ final class GalleryViewModel: ObservableObject {
         return String(format: "%04d-%02d", y, m)
     }
 
+    // MARK: - Assets (搜索用，非 timeline 模式)
+
+    func loadAssets(refresh: Bool = false) async {
+        guard !isLoading else { return }
+        if !refresh && !hasMore { return }
+
+        isLoading = true
+        defer { isLoading = false }
+
+        if refresh {
+            let offset = 0
+            do {
+                let batch = try await api.getAssets(limit: pageSize, offset: offset)
+                assets = batch
+                hasMore = batch.count >= pageSize
+            } catch {
+                print("[PandaVault] Error: \(error)")
+            }
+        } else {
+            let offset = assets.count
+            do {
+                let newAssets = try await api.getAssets(limit: pageSize, offset: offset)
+                assets.append(contentsOf: newAssets)
+                hasMore = newAssets.count >= pageSize
+            } catch { print("[PandaVault] Error: \(error)") }
+        }
+    }
+
     // MARK: - Search (默认 AI 语义搜索，降级到文件名)
 
     func search() async {
         guard !searchText.isEmpty else {
-            await loadAssets(refresh: true)
+            // 清空搜索 → 回到 timeline 模式
+            assets = []
+            isImageSearchResult = false
             return
         }
 
@@ -196,7 +194,7 @@ final class GalleryViewModel: ObservableObject {
 
     func clearImageSearch() {
         isImageSearchResult = false
-        Task { await loadAssets(refresh: true) }
+        assets = []
     }
 
     func loadMoreIfNeeded(current: Asset) {

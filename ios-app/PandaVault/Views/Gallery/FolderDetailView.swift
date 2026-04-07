@@ -11,27 +11,32 @@ struct FolderDetailView: View {
     @State private var subfolders: [Folder] = []
     @State private var isLoading = false
     @State private var searchText = ""
+    @State private var displayedAssets: [Asset] = []
     @State private var selectedAsset: Asset?
     @State private var showDeleteConfirm = false
     @State private var showRenameAlert = false
     @State private var renameText = ""
 
-    private var filteredAssets: [Asset] {
-        if searchText.isEmpty { return assets }
-        return assets.filter { $0.filename.localizedCaseInsensitiveContains(searchText) }
+    private func applyFilter() {
+        if searchText.isEmpty {
+            displayedAssets = assets
+        } else {
+            displayedAssets = assets.filter { $0.filename.localizedCaseInsensitiveContains(searchText) }
+        }
     }
 
     var body: some View {
         FolderDetailContent(
             subfolders: subfolders,
-            filteredAssets: filteredAssets,
+            filteredAssets: displayedAssets,
             isLoading: isLoading,
             searchText: searchText,
             api: api,
             selectedAsset: $selectedAsset
         )
         .navigationTitle(folder.name)
-        .searchable(text: $searchText, prompt: "在「\(folder.name)」中搜索...")
+        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "在「\(folder.name)」中搜索...")
+        .onChange(of: searchText) { _, _ in applyFilter() }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 FolderDetailMenu(
@@ -43,7 +48,7 @@ struct FolderDetailView: View {
             }
         }
         .fullScreenCover(item: $selectedAsset) { asset in
-            AssetDetailView(assets: filteredAssets, initialAsset: asset, api: api) {
+            AssetDetailView(assets: displayedAssets, initialAsset: asset, api: api) {
                 Task { await loadFolderAssets() }
             }
         }
@@ -84,6 +89,7 @@ struct FolderDetailView: View {
         defer { isLoading = false }
         do {
             assets = try await api.getFolderAssets(folderId: folder.id)
+            applyFilter()
         } catch {
             print("[PandaVault] Error: \(error)")
         }

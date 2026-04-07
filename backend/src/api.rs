@@ -141,6 +141,7 @@ pub struct AssetRow {
     duration_sec: Option<i32>,
     width: Option<i32>,
     height: Option<i32>,
+    volume_id: Option<Uuid>,
 }
 
 // 一期：流式上传 -> 落盘 -> SHA256 去重 -> 缩略图 -> 入库
@@ -276,6 +277,8 @@ struct ListQuery {
     q: Option<String>,
     limit: Option<i64>,
     offset: Option<i64>,
+    /// 按月筛选，格式 "2026-04"，匹配 COALESCE(shoot_at, created_at) 所在月份
+    month: Option<String>,
 }
 
 /// 快速检查文件是否已存在（用 fingerprint = "size_headhash"）
@@ -319,16 +322,33 @@ async fn list_assets(
     State(state): State<AppState>,
     Query(q): Query<ListQuery>,
 ) -> Response {
-    let limit = q.limit.unwrap_or(50).clamp(1, 200);
+    let limit = q.limit.unwrap_or(50).clamp(1, 500);
     let offset = q.offset.unwrap_or(0).max(0);
 
-    let rows_res = match q.q {
-        Some(term) if !term.trim().is_empty() => {
+    // 解析 month 参数 "2026-04" → 月初和月末日期
+    let month_range: Option<(NaiveDate, NaiveDate)> = q.month.as_ref().and_then(|m| {
+        let parts: Vec<&str> = m.split('-').collect();
+        if parts.len() != 2 { return None; }
+        let y: i32 = parts[0].parse().ok()?;
+        let m: u32 = parts[1].parse().ok()?;
+        let start = NaiveDate::from_ymd_opt(y, m, 1)?;
+        // 下个月 1 号（作为开区间上界）
+        let end = if m == 12 {
+            NaiveDate::from_ymd_opt(y + 1, 1, 1)?
+        } else {
+            NaiveDate::from_ymd_opt(y, m + 1, 1)?
+        };
+        Some((start, end))
+    });
+
+    let rows_res = match (&q.q, month_range) {
+        // 文本搜索
+        (Some(term), _) if !term.trim().is_empty() => {
             let like = format!("%{}%", term.trim());
             sqlx::query_as::<_, AssetRow>(
                 r#"
                 SELECT id, filename, file_path, proxy_path, thumb_path, file_hash, size_bytes,
-                       shoot_at, created_at, duration_sec, width, height
+                       shoot_at, created_at, duration_sec, width, height, volume_id
                 FROM assets
                 WHERE is_deleted = FALSE
                   AND (filename ILIKE $1 OR file_path ILIKE $1)
@@ -342,11 +362,33 @@ async fn list_assets(
             .fetch_all(&state.pool)
             .await
         }
+        // 按月筛选
+        (_, Some((month_start, month_end))) => {
+            sqlx::query_as::<_, AssetRow>(
+                r#"
+                SELECT id, filename, file_path, proxy_path, thumb_path, file_hash, size_bytes,
+                       shoot_at, created_at, duration_sec, width, height, volume_id
+                FROM assets
+                WHERE is_deleted = FALSE
+                  AND COALESCE(shoot_at, created_at)::date >= $1
+                  AND COALESCE(shoot_at, created_at)::date < $2
+                ORDER BY COALESCE(shoot_at, created_at) DESC NULLS LAST
+                LIMIT $3 OFFSET $4
+                "#,
+            )
+            .bind(month_start)
+            .bind(month_end)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(&state.pool)
+            .await
+        }
+        // 默认：全部
         _ => {
             sqlx::query_as::<_, AssetRow>(
                 r#"
                 SELECT id, filename, file_path, proxy_path, thumb_path, file_hash, size_bytes,
-                       shoot_at, created_at, duration_sec, width, height
+                       shoot_at, created_at, duration_sec, width, height, volume_id
                 FROM assets
                 WHERE is_deleted = FALSE
                 ORDER BY COALESCE(shoot_at, created_at) DESC NULLS LAST
@@ -381,7 +423,7 @@ async fn list_unassigned_assets(
             sqlx::query_as::<_, AssetRow>(
                 r#"
                 SELECT a.id, a.filename, a.file_path, a.proxy_path, a.thumb_path, a.file_hash, a.size_bytes,
-                       a.shoot_at, a.created_at, a.duration_sec, a.width, a.height
+                       a.shoot_at, a.created_at, a.duration_sec, a.width, a.height, a.volume_id
                 FROM assets a
                 WHERE a.is_deleted = FALSE
                   AND NOT EXISTS (SELECT 1 FROM asset_folders af WHERE af.asset_id = a.id)
@@ -400,7 +442,7 @@ async fn list_unassigned_assets(
             sqlx::query_as::<_, AssetRow>(
                 r#"
                 SELECT a.id, a.filename, a.file_path, a.proxy_path, a.thumb_path, a.file_hash, a.size_bytes,
-                       a.shoot_at, a.created_at, a.duration_sec, a.width, a.height
+                       a.shoot_at, a.created_at, a.duration_sec, a.width, a.height, a.volume_id
                 FROM assets a
                 WHERE a.is_deleted = FALSE
                   AND NOT EXISTS (SELECT 1 FROM asset_folders af WHERE af.asset_id = a.id)
@@ -428,7 +470,7 @@ async fn get_asset(State(state): State<AppState>, Path(id): Path<Uuid>) -> Respo
     let row: Option<AssetRow> = match sqlx::query_as::<_, AssetRow>(
         r#"
         SELECT id, filename, file_path, proxy_path, thumb_path, file_hash, size_bytes,
-               shoot_at, created_at, duration_sec, width, height
+               shoot_at, created_at, duration_sec, width, height, volume_id
         FROM assets
         WHERE id = $1 AND is_deleted = FALSE
         "#,
@@ -450,7 +492,7 @@ async fn get_asset(State(state): State<AppState>, Path(id): Path<Uuid>) -> Respo
 async fn download_asset(State(state): State<AppState>, Path(id): Path<Uuid>) -> Response {
     let row: Option<AssetRow> = match sqlx::query_as::<_, AssetRow>(
         "SELECT id, filename, file_path, proxy_path, thumb_path, file_hash, size_bytes,
-                shoot_at, created_at, duration_sec, width, height
+                shoot_at, created_at, duration_sec, width, height, volume_id
          FROM assets WHERE id = $1 AND is_deleted = FALSE",
     )
     .bind(id)
@@ -465,7 +507,10 @@ async fn download_asset(State(state): State<AppState>, Path(id): Path<Uuid>) -> 
         return json_err(StatusCode::NOT_FOUND, "asset 不存在").into_response();
     };
 
-    let abs_path = state.cfg.resolve_under_root(&asset.file_path);
+    let abs_path = match state.volumes.resolve_asset_path(&asset.file_path, asset.volume_id).await {
+        Ok(p) => p,
+        Err(e) => return json_err(StatusCode::INTERNAL_SERVER_ERROR, format!("解析路径失败: {e}")).into_response(),
+    };
     if !abs_path.exists() {
         return json_err(StatusCode::NOT_FOUND, "文件不存在").into_response();
     }
@@ -517,7 +562,7 @@ async fn update_asset(
         SET filename = $2
         WHERE id = $1 AND is_deleted = FALSE
         RETURNING id, filename, file_path, proxy_path, thumb_path, file_hash, size_bytes,
-                  shoot_at, created_at, duration_sec, width, height
+                  shoot_at, created_at, duration_sec, width, height, volume_id
         "#,
     )
     .bind(id)
@@ -692,7 +737,7 @@ async fn semantic_search(
     let rows = match sqlx::query_as::<_, AssetRow>(
         r#"
         SELECT id, filename, file_path, proxy_path, thumb_path, file_hash, size_bytes,
-               shoot_at, created_at, duration_sec, width, height
+               shoot_at, created_at, duration_sec, width, height, volume_id
         FROM assets
         WHERE id = ANY($1)
         "#,
@@ -727,6 +772,7 @@ async fn semantic_search(
                     duration_sec: row.duration_sec,
                     width: row.width,
                     height: row.height,
+                    volume_id: row.volume_id,
                 }),
                 similarity: sr.similarity,
             })
@@ -791,7 +837,7 @@ async fn image_search(
     let asset_ids: Vec<Uuid> = search_results.iter().map(|r| r.asset_id).collect();
     let rows = match sqlx::query_as::<_, AssetRow>(
         "SELECT id, filename, file_path, proxy_path, thumb_path, file_hash, size_bytes,
-                shoot_at, created_at, duration_sec, width, height
+                shoot_at, created_at, duration_sec, width, height, volume_id
          FROM assets WHERE id = ANY($1)",
     )
     .bind(&asset_ids)
@@ -821,6 +867,7 @@ async fn image_search(
                     duration_sec: row.duration_sec,
                     width: row.width,
                     height: row.height,
+                    volume_id: row.volume_id,
                 }),
                 similarity: sr.similarity,
             })

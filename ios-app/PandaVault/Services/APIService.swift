@@ -47,6 +47,12 @@ final class APIService: Sendable {
         return try await get("/api/assets?\(params)")
     }
 
+    /// 按月获取资产，month 格式 "2026-04"
+    func getAssetsByMonth(month: String, limit: Int = 500, offset: Int = 0) async throws -> [Asset] {
+        let params = "month=\(month)&limit=\(limit)&offset=\(offset)"
+        return try await get("/api/assets?\(params)")
+    }
+
     func getAsset(id: UUID) async throws -> Asset {
         try await get("/api/assets/\(id)")
     }
@@ -143,6 +149,14 @@ final class APIService: Sendable {
 
     func getFolderAssets(folderId: UUID, limit: Int = 200, offset: Int = 0) async throws -> [Asset] {
         try await get("/api/folders/\(folderId)/assets?limit=\(limit)&offset=\(offset)")
+    }
+
+    func addAssetToFolder(folderId: UUID, assetId: UUID) async throws {
+        guard let url = makeURL("/api/folders/\(folderId)/assets/\(assetId)") else { throw APIError.invalidURL }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        let (_, response) = try await session.data(for: request)
+        try validateResponse(response)
     }
 
     // MARK: - Upload

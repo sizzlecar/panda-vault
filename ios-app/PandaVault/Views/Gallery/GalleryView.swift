@@ -82,7 +82,7 @@ struct GalleryView: View {
         .task {
             guard !appState.serverURL.isEmpty else { return }
             vm.updateAPI(appState.api)
-            await vm.loadTimelineAndAssets()
+            await vm.loadTimeline()
             await vm.loadFolders()
         }
     }
@@ -217,15 +217,27 @@ private struct GalleryTimelineView: View {
         LazyVStack(alignment: .leading, spacing: 12, pinnedViews: .sectionHeaders) {
             ForEach(vm.timeline) { group in
                 Section {
-                    GalleryAssetsGrid(
-                        assets: vm.assetsForMonth(group.month),
-                        api: api,
-                        isSelecting: $isSelecting,
-                        selectedIds: $selectedIds,
-                        selectedAsset: $selectedAsset
-                    )
+                    let monthAssets = vm.assetsForMonth(group.month)
+                    if monthAssets.isEmpty && vm.isMonthLoading(group.month) {
+                        // 该月正在加载，显示占位
+                        ProgressView()
+                            .tint(PV.cyan)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 20)
+                    } else {
+                        GalleryAssetsGrid(
+                            assets: monthAssets,
+                            api: api,
+                            isSelecting: $isSelecting,
+                            selectedIds: $selectedIds,
+                            selectedAsset: $selectedAsset
+                        )
+                    }
                 } header: {
                     TimelineSectionHeader(group: group)
+                        .onAppear {
+                            vm.ensureMonthLoaded(group.month)
+                        }
                 }
             }
             if vm.isLoading {

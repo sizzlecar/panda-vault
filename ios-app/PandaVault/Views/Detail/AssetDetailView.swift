@@ -13,6 +13,9 @@ struct AssetDetailView: View {
     @State private var showSaveAlert = false
     @State private var saveMessage = ""
     @State private var isSaving = false
+    @State private var showMovePicker = false
+    @State private var showMoveAlert = false
+    @State private var moveMessage = ""
 
     init(assets: [Asset], initialAsset: Asset, api: APIService, onDelete: (() -> Void)? = nil) {
         self.assets = assets
@@ -109,6 +112,19 @@ struct AssetDetailView: View {
         } message: {
             Text(saveMessage)
         }
+        .alert("", isPresented: $showMoveAlert) {
+            Button("好") {}
+        } message: {
+            Text(moveMessage)
+        }
+        .sheet(isPresented: $showMovePicker) {
+            if let asset = current {
+                MoveToFolderView(api: api, asset: asset) { message in
+                    moveMessage = message
+                    showMoveAlert = true
+                }
+            }
+        }
     }
 
     // MARK: - Top Buttons
@@ -171,6 +187,13 @@ struct AssetDetailView: View {
                     .background(.ultraThinMaterial, in: Circle())
             }
 
+            Button { showMovePicker = true } label: {
+                Image(systemName: "folder.badge.plus")
+                    .font(.body)
+                    .padding(10)
+                    .background(.ultraThinMaterial, in: Circle())
+            }
+
             Button { showDeleteConfirm = true } label: {
                 Image(systemName: "trash")
                     .font(.body)
@@ -186,6 +209,12 @@ struct AssetDetailView: View {
 
     // MARK: - Image Bottom Bar
 
+    private static let dateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd HH:mm"
+        return f
+    }()
+
     private func imageBottomBar(_ asset: Asset) -> some View {
         VStack(spacing: 10) {
             HStack(spacing: 12) {
@@ -197,16 +226,42 @@ struct AssetDetailView: View {
             .font(.caption2)
             .foregroundStyle(.white.opacity(0.8))
 
-            Button { Task { await saveToPhotos(asset) } } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "square.and.arrow.down")
-                    Text("保存到相册")
+            HStack(spacing: 12) {
+                Image(systemName: "clock")
+                let date = asset.shootAt ?? asset.createdAt
+                Text(Self.dateFormatter.string(from: date))
+                if asset.shootAt != nil {
+                    Text("拍摄")
                 }
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background(.white.opacity(0.15), in: RoundedRectangle(cornerRadius: 10))
+                Spacer()
+            }
+            .font(.caption2)
+            .foregroundStyle(.white.opacity(0.6))
+
+            HStack(spacing: 10) {
+                Button { Task { await saveToPhotos(asset) } } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "square.and.arrow.down")
+                        Text("保存到相册")
+                    }
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(.white.opacity(0.15), in: RoundedRectangle(cornerRadius: 10))
+                }
+
+                Button { showMovePicker = true } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "folder.badge.plus")
+                        Text("移动")
+                    }
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(.white.opacity(0.15), in: RoundedRectangle(cornerRadius: 10))
+                }
             }
         }
         .padding()
@@ -259,6 +314,80 @@ struct AssetDetailView: View {
             onDelete?()
             dismiss()
         } catch { print("[PandaVault] Delete error: \(error)") }
+    }
+}
+
+// MARK: - Move to Folder
+
+struct MoveToFolderView: View {
+    let api: APIService
+    let asset: Asset
+    var onComplete: ((String) -> Void)?
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var folders: [Folder] = []
+    @State private var isLoading = false
+    @State private var isMoving = false
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if isLoading {
+                    HStack {
+                        Spacer()
+                        ProgressView().tint(PV.cyan)
+                        Spacer()
+                    }
+                }
+
+                ForEach(folders) { folder in
+                    Button {
+                        Task { await moveToFolder(folder) }
+                    } label: {
+                        HStack {
+                            Image(systemName: "folder.fill")
+                                .foregroundStyle(PV.cyan)
+                            Text(folder.name)
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            if isMoving {
+                                ProgressView().tint(PV.cyan)
+                            }
+                        }
+                    }
+                    .disabled(isMoving)
+                }
+            }
+            .navigationTitle("移动到文件夹")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { dismiss() }
+                }
+            }
+            .task {
+                isLoading = true
+                defer { isLoading = false }
+                do {
+                    folders = try await api.getFolders()
+                } catch {
+                    print("[PandaVault] Load folders error: \(error)")
+                }
+            }
+        }
+    }
+
+    private func moveToFolder(_ folder: Folder) async {
+        isMoving = true
+        defer { isMoving = false }
+        do {
+            try await api.addAssetToFolder(folderId: folder.id, assetId: asset.id)
+            dismiss()
+            onComplete?("已移动到「\(folder.name)」")
+        } catch {
+            dismiss()
+            onComplete?("移动失败: \(error.localizedDescription)")
+        }
     }
 }
 

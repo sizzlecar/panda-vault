@@ -7,7 +7,7 @@ struct SettingsView: View {
     @State private var serverInput = ""
     @State private var isTesting = false
     @State private var folders: [Folder] = []
-    @State private var autoBackup = false
+    @State private var autoBackup = UserDefaults.standard.bool(forKey: "autoBackup")
 
     private static let lastSyncFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -55,6 +55,12 @@ struct SettingsView: View {
                 Section {
                     Toggle("自动备份", isOn: $autoBackup)
                         .tint(PV.cyan)
+                        .onChange(of: autoBackup) { _, newValue in
+                            UserDefaults.standard.set(newValue, forKey: "autoBackup")
+                            if newValue {
+                                BackgroundSyncManager.shared.scheduleSync()
+                            }
+                        }
 
                     Picker("同步文件夹", selection: $syncEngine.syncFolderId) {
                         Text("默认").tag(UUID?.none)

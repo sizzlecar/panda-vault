@@ -114,6 +114,7 @@ struct JobRow {
 struct AssetPathRow {
     file_path: String,
     created_at: Option<chrono::NaiveDateTime>,
+    volume_id: Option<Uuid>,
 }
 
 async fn try_run_transcode_job(state: &AppState) -> anyhow::Result<bool> {
@@ -130,7 +131,7 @@ async fn try_run_transcode_job(state: &AppState) -> anyhow::Result<bool> {
     // 加载 asset 路径
     let asset = sqlx::query_as::<_, AssetPathRow>(
         r#"
-        SELECT file_path, created_at
+        SELECT file_path, created_at, volume_id
         FROM assets
         WHERE id = $1
         "#,
@@ -139,7 +140,7 @@ async fn try_run_transcode_job(state: &AppState) -> anyhow::Result<bool> {
     .fetch_one(&state.pool)
     .await?;
 
-    let input_abs = state.cfg.resolve_under_root(&asset.file_path);
+    let input_abs = state.volumes.resolve_asset_path(&asset.file_path, asset.volume_id).await?;
 
     // 先提取元数据并写回（二期）
     if let Ok(info) = media::probe(&state.cfg, &input_abs).await {
@@ -381,6 +382,7 @@ struct EmbeddingJobRow {
 struct AssetForEmbedding {
     file_path: String,
     thumb_path: Option<String>,
+    volume_id: Option<Uuid>,
 }
 
 async fn try_run_embedding_job(state: &AppState) -> anyhow::Result<bool> {
@@ -401,7 +403,7 @@ async fn try_run_embedding_job(state: &AppState) -> anyhow::Result<bool> {
     // 加载资产信息
     let asset = sqlx::query_as::<_, AssetForEmbedding>(
         r#"
-        SELECT file_path, thumb_path
+        SELECT file_path, thumb_path, volume_id
         FROM assets
         WHERE id = $1
         "#,
@@ -413,9 +415,9 @@ async fn try_run_embedding_job(state: &AppState) -> anyhow::Result<bool> {
     // 优先使用缩略图，否则使用原始文件。
     // 但历史数据里可能存在：DB 有 thumb_path，但磁盘文件已不存在（例如之前 ffmpeg 失败/被清理）。
     // 这种情况下自动从 raw 重新生成缩略图，失败则回退到 raw 文件继续 embedding，避免 AI 端 404。
-    let raw_path = state.cfg.resolve_under_root(&asset.file_path);
+    let raw_path = state.volumes.resolve_asset_path(&asset.file_path, asset.volume_id).await?;
     let source_path = if let Some(ref thumb_rel) = asset.thumb_path {
-        let thumb_abs = state.cfg.resolve_under_root(thumb_rel);
+        let thumb_abs = state.volumes.resolve_asset_path(thumb_rel, asset.volume_id).await?;
         if tokio::fs::metadata(&thumb_abs).await.is_ok() {
             thumb_abs
         } else {

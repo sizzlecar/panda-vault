@@ -8,6 +8,8 @@ struct UploadView: View {
     @State private var selectedItems: [PhotosPickerItem] = []
     @State private var folders: [Folder] = []
     @State private var selectedFolderId: UUID?
+    @State private var selectedFolderPath: String = "/ 根目录"
+    @State private var showFolderPicker = false
     @State private var showNewFolderAlert = false
     @State private var newFolderName = ""
     @State private var isExporting = false
@@ -74,10 +76,19 @@ struct UploadView: View {
 
     private var folderSection: some View {
         Section {
-            Picker("上传到", selection: $selectedFolderId) {
-                Text("/ 根目录").tag(UUID?.none)
-                ForEach(folders) { folder in
-                    Text("/ \(folder.name)").tag(Optional(folder.id))
+            Button {
+                showFolderPicker = true
+            } label: {
+                HStack {
+                    Text("上传到")
+                        .foregroundStyle(.primary)
+                    Spacer()
+                    Text(selectedFolderPath)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
                 }
             }
             Button { newFolderName = ""; showNewFolderAlert = true } label: {
@@ -86,6 +97,9 @@ struct UploadView: View {
             }
         } header: {
             PixelSectionHeader(title: "目标位置")
+        }
+        .sheet(isPresented: $showFolderPicker) {
+            FolderPickerView(api: appState.api, selectedFolderId: $selectedFolderId, selectedFolderPath: $selectedFolderPath)
         }
     }
 
@@ -287,6 +301,99 @@ struct CircularProgressView: View {
                 .trim(from: 0, to: progress)
                 .stroke(PV.cyan, style: StrokeStyle(lineWidth: 3, lineCap: .round))
                 .rotationEffect(.degrees(-90))
+        }
+    }
+}
+
+// MARK: - Folder Picker (hierarchical drill-down)
+
+struct FolderPickerView: View {
+    let api: APIService
+    @Binding var selectedFolderId: UUID?
+    @Binding var selectedFolderPath: String
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            FolderPickerLevel(api: api, parentId: nil, pathPrefix: "/", selectedFolderId: $selectedFolderId, selectedFolderPath: $selectedFolderPath, dismiss: dismiss)
+                .navigationTitle("选择文件夹")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("取消") { dismiss() }
+                    }
+                }
+        }
+    }
+}
+
+private struct FolderPickerLevel: View {
+    let api: APIService
+    let parentId: UUID?
+    let pathPrefix: String
+    @Binding var selectedFolderId: UUID?
+    @Binding var selectedFolderPath: String
+    let dismiss: DismissAction
+
+    @State private var folders: [Folder] = []
+    @State private var isLoading = false
+
+    var body: some View {
+        List {
+            // Option to select the current level
+            Button {
+                selectedFolderId = parentId
+                selectedFolderPath = parentId == nil ? "/ 根目录" : pathPrefix
+                dismiss()
+            } label: {
+                HStack {
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(selectedFolderId == parentId ? PV.cyan : .clear)
+                        .frame(width: 20)
+                    Text(parentId == nil ? "/ 根目录" : "[ 选择当前文件夹 ]")
+                        .foregroundStyle(parentId == nil ? .primary : PV.cyan)
+                }
+            }
+
+            if isLoading {
+                HStack {
+                    Spacer()
+                    ProgressView().tint(PV.cyan)
+                    Spacer()
+                }
+            }
+
+            ForEach(folders) { folder in
+                NavigationLink {
+                    FolderPickerLevel(
+                        api: api,
+                        parentId: folder.id,
+                        pathPrefix: "\(pathPrefix)\(folder.name)/",
+                        selectedFolderId: $selectedFolderId,
+                        selectedFolderPath: $selectedFolderPath,
+                        dismiss: dismiss
+                    )
+                    .navigationTitle(folder.name)
+                } label: {
+                    HStack {
+                        Image(systemName: "checkmark")
+                            .foregroundStyle(selectedFolderId == folder.id ? PV.cyan : .clear)
+                            .frame(width: 20)
+                        Image(systemName: "folder.fill")
+                            .foregroundStyle(PV.cyan)
+                        Text(folder.name)
+                    }
+                }
+            }
+        }
+        .task {
+            isLoading = true
+            defer { isLoading = false }
+            do {
+                folders = try await api.getFolders(parentId: parentId)
+            } catch {
+                print("[PandaVault] Folder picker error: \(error)")
+            }
         }
     }
 }
