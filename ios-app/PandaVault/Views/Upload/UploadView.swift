@@ -38,14 +38,13 @@ struct UploadView: View {
                     }
                 }
             }
-            .alert("新建文件夹", isPresented: $showNewFolderAlert) {
-                TextField("文件夹名称", text: $newFolderName)
-                Button("创建") { Task { await createFolder() } }
-                Button("取消", role: .cancel) {}
-            } message: {
-                let parent = selectedFolderPath == "/ 根目录" ? "/" : selectedFolderPath
-                let preview = newFolderName.isEmpty ? parent : "\(parent)\(newFolderName)/"
-                Text("将创建: \(preview)")
+            .sheet(isPresented: $showNewFolderAlert) {
+                CreateFolderSheet(
+                    parentPath: selectedFolderPath == "/ 根目录" ? "/" : selectedFolderPath,
+                    folderName: $newFolderName,
+                    onCreate: { Task { await createFolder() } }
+                )
+                .presentationDetents([.height(220)])
             }
             .alert("", isPresented: $showResultAlert) {
                 Button("好") {}
@@ -464,5 +463,61 @@ struct UploadProgressSummary: View {
                     .foregroundStyle(.tertiary)
             }
         }
+    }
+}
+
+// MARK: - Create Folder Sheet
+
+private struct CreateFolderSheet: View {
+    let parentPath: String
+    @Binding var folderName: String
+    let onCreate: () -> Void
+    @Environment(\.dismiss) private var dismiss
+    @FocusState private var isFocused: Bool
+
+    private var previewPath: String {
+        folderName.trimmingCharacters(in: .whitespaces).isEmpty
+            ? parentPath
+            : "\(parentPath)\(folderName.trimmingCharacters(in: .whitespaces))/"
+    }
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("新建文件夹")
+                .font(.headline)
+
+            Text(previewPath)
+                .font(.system(.caption, design: .monospaced))
+                .foregroundStyle(PV.cyan)
+                .lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(PV.cyan.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+
+            TextField("文件夹名称", text: $folderName)
+                .textFieldStyle(.roundedBorder)
+                .focused($isFocused)
+
+            HStack(spacing: 16) {
+                Button("取消") { dismiss() }
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+
+                Button("创建") {
+                    onCreate()
+                    dismiss()
+                }
+                .fontWeight(.semibold)
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(PV.cyan, in: RoundedRectangle(cornerRadius: 8))
+                .disabled(folderName.trimmingCharacters(in: .whitespaces).isEmpty)
+                .opacity(folderName.trimmingCharacters(in: .whitespaces).isEmpty ? 0.5 : 1)
+            }
+        }
+        .padding(20)
+        .onAppear { isFocused = true }
     }
 }
