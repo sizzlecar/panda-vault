@@ -45,11 +45,9 @@ struct UploadView: View {
                     parentId: selectedFolderId,
                     folderName: $newFolderName,
                     selectedFolderId: $selectedFolderId,
-                    selectedFolderPath: $selectedFolderPath,
-                    showResultAlert: $showResultAlert,
-                    resultMessage: $resultMessage
+                    selectedFolderPath: $selectedFolderPath
                 )
-                .presentationDetents([.height(240)])
+                .presentationDetents([.height(260)])
             }
             .alert("", isPresented: $showResultAlert) {
                 Button("好") {}
@@ -458,21 +456,23 @@ private struct CreateFolderSheet: View {
     @Binding var folderName: String
     @Binding var selectedFolderId: UUID?
     @Binding var selectedFolderPath: String
-    @Binding var showResultAlert: Bool
-    @Binding var resultMessage: String
     @Environment(\.dismiss) private var dismiss
     @FocusState private var isFocused: Bool
     @State private var isCreating = false
+    @State private var statusMsg = ""
+    @State private var isError = false
+
+    private var trimmedName: String {
+        folderName.trimmingCharacters(in: .whitespaces)
+    }
 
     private var previewPath: String {
-        let name = folderName.trimmingCharacters(in: .whitespaces)
-        return name.isEmpty ? parentPath : "\(parentPath)\(name)/"
+        trimmedName.isEmpty ? parentPath : "\(parentPath)\(trimmedName)/"
     }
 
     var body: some View {
         VStack(spacing: 16) {
-            Text("新建文件夹")
-                .font(.headline)
+            Text("新建文件夹").font(.headline)
 
             Text(previewPath)
                 .font(.system(.caption, design: .monospaced))
@@ -487,21 +487,27 @@ private struct CreateFolderSheet: View {
                 .textFieldStyle(.roundedBorder)
                 .focused($isFocused)
 
+            if !statusMsg.isEmpty {
+                Text(statusMsg)
+                    .font(.caption)
+                    .foregroundStyle(isError ? .red : PV.cyan)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
             HStack(spacing: 16) {
                 Button("取消") { dismiss() }
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity)
 
-                Button("创建") {
+                Button(isCreating ? "创建中..." : "创建") {
                     Task { await doCreate() }
                 }
                 .fontWeight(.semibold)
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 10)
-                .background(isCreating ? .gray : PV.cyan, in: RoundedRectangle(cornerRadius: 8))
-                .disabled(folderName.trimmingCharacters(in: .whitespaces).isEmpty || isCreating)
-                .opacity(folderName.trimmingCharacters(in: .whitespaces).isEmpty ? 0.5 : 1)
+                .background(trimmedName.isEmpty || isCreating ? .gray : PV.cyan, in: RoundedRectangle(cornerRadius: 8))
+                .disabled(trimmedName.isEmpty || isCreating)
             }
         }
         .padding(20)
@@ -509,38 +515,26 @@ private struct CreateFolderSheet: View {
     }
 
     private func doCreate() async {
-        let name = folderName.trimmingCharacters(in: .whitespaces)
-        guard !name.isEmpty else { return }
+        guard !trimmedName.isEmpty else { return }
         isCreating = true
+        statusMsg = ""
         defer { isCreating = false }
         do {
-            print("[PandaVault] Creating folder: \(name) under parentId: \(String(describing: parentId))")
-            let folder = try await api.createFolder(name: name, parentId: parentId)
-            print("[PandaVault] Created folder: \(folder.name) id: \(folder.id)")
+            let folder = try await api.createFolder(name: trimmedName, parentId: parentId)
             selectedFolderId = folder.id
             selectedFolderPath = previewPath
-            resultMessage = "创建成功\n\(previewPath)"
             folderName = ""
             dismiss()
-            // delay to let sheet dismiss before showing alert
-            try? await Task.sleep(nanoseconds: 300_000_000)
-            showResultAlert = true
         } catch let error as APIError {
+            isError = true
             if case .httpError(let code) = error, code == 409 {
-                resultMessage = "同名文件夹已存在"
+                statusMsg = "同名文件夹已存在"
             } else {
-                resultMessage = "创建失败: \(error.localizedDescription)"
+                statusMsg = "创建失败: \(error.localizedDescription)"
             }
-            print("[PandaVault] Create folder error: \(error)")
-            dismiss()
-            try? await Task.sleep(nanoseconds: 300_000_000)
-            showResultAlert = true
         } catch {
-            resultMessage = "创建失败: \(error.localizedDescription)"
-            print("[PandaVault] Create folder error: \(error)")
-            dismiss()
-            try? await Task.sleep(nanoseconds: 300_000_000)
-            showResultAlert = true
+            isError = true
+            statusMsg = "创建失败: \(error.localizedDescription)"
         }
     }
 }
