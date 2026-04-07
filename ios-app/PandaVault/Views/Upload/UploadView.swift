@@ -55,6 +55,9 @@ struct UploadView: View {
                 Text(resultMessage)
             }
         }
+        .sheet(isPresented: $showFolderPicker) {
+            FolderPickerView(api: appState.api, selectedFolderId: $selectedFolderId, selectedFolderPath: $selectedFolderPath, isPresented: $showFolderPicker)
+        }
         .photosPicker(
             isPresented: $showPicker,
             selection: $selectedItems,
@@ -110,9 +113,6 @@ struct UploadView: View {
             }
         } header: {
             PixelSectionHeader(title: "目标位置")
-        }
-        .sheet(isPresented: $showFolderPicker) {
-            FolderPickerView(api: appState.api, selectedFolderId: $selectedFolderId, selectedFolderPath: $selectedFolderPath, isPresented: $showFolderPicker)
         }
     }
 
