@@ -243,8 +243,10 @@ pub async fn complete_upload(
 
     tracing::info!("分片上传入库成功: {} ({} MB)", safe_name, file_size / 1024 / 1024);
 
-    // 后台算真实 hash + 首尾指纹（不阻塞响应）
+    // 后台算真实 hash + 首尾指纹 + 视频去重（不阻塞响应）
     let pool = state.pool.clone();
+    let cfg_bg = state.cfg.clone();
+    let safe_name = safe_name.clone();
     let raw_abs_bg = raw_abs.clone();
     tokio::spawn(async move {
         match stream_hash(&raw_abs_bg).await {
@@ -258,6 +260,24 @@ pub async fn complete_upload(
                 .fetch_optional(&pool)
                 .await
                 .unwrap_or(None);
+
+                // 视频去重：SHA256 未命中时，用 size+duration+resolution 模糊匹配
+                let dup = if dup.is_none() {
+                    let ext = safe_name.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
+                    let is_video = matches!(ext.as_str(), "mp4" | "mov" | "avi" | "mkv" | "webm" | "m4v");
+                    if is_video {
+                        if let Ok(probe) = media::probe(&cfg_bg, &raw_abs_bg).await {
+                            if let (Some(dur), Some(w), Some(h)) = (probe.duration_sec, probe.width, probe.height) {
+                                let lo = (file_size as f64 * 0.99) as i64;
+                                let hi = (file_size as f64 * 1.01) as i64;
+                                sqlx::query_as::<_, (Uuid,)>(
+                                    "SELECT id FROM assets WHERE id != $1 AND is_deleted = FALSE AND size_bytes BETWEEN $2 AND $3 AND duration_sec = $4 AND width = $5 AND height = $6 LIMIT 1"
+                                ).bind(asset_id).bind(lo).bind(hi).bind(dur).bind(w).bind(h)
+                                .fetch_optional(&pool).await.unwrap_or(None)
+                            } else { None }
+                        } else { None }
+                    } else { None }
+                } else { dup };
 
                 if let Some((dup_id,)) = dup {
                     // 去重：删除刚入库的，保留旧的
