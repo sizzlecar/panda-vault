@@ -302,6 +302,7 @@ struct AssetDetailView: View {
         .padding()
         .padding(.bottom, 4)
         .background(.ultraThinMaterial)
+        .environment(\.colorScheme, .dark)
     }
 
     // MARK: - Saving Overlay
