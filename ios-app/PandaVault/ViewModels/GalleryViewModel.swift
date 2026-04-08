@@ -67,9 +67,19 @@ final class GalleryViewModel: ObservableObject {
         monthsInFlight = []
         monthLoadingStates = [:]
         await loadTimeline()
-        // 刷新后主动加载前几个月，避免 onAppear 不重新触发
+        // 同步加载前几个月数据，确保 view 有内容可渲染
         for group in timeline.prefix(3) {
-            ensureMonthLoaded(group.month)
+            let month = group.month
+            if monthlyAssets[month] == nil {
+                monthLoadingStates[month] = .loading
+                do {
+                    let assets = try await api.getAssetsByMonth(month: month)
+                    monthlyAssets[month] = assets
+                    monthLoadingStates[month] = .loaded
+                } catch {
+                    monthLoadingStates[month] = .failed
+                }
+            }
         }
     }
 
