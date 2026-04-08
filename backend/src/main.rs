@@ -157,6 +157,41 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
+    // 回收站自动清理：每小时删除 7 天前的已删除资产
+    {
+        let pool_gc = app_state.pool.clone();
+        let cfg_gc = cfg.clone();
+        let vol_gc = vol_mgr.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(tokio::time::Duration::from_secs(3600)).await;
+
+                let rows: Vec<(uuid::Uuid, String, Option<String>, Option<String>, Option<uuid::Uuid>)> = sqlx::query_as(
+                    "SELECT id, file_path, proxy_path, thumb_path, volume_id FROM assets WHERE is_deleted = TRUE AND deleted_at < NOW() - INTERVAL '7 days'"
+                ).fetch_all(&pool_gc).await.unwrap_or_default();
+
+                if rows.is_empty() { continue; }
+                tracing::info!("回收站自动清理: {} 个过期资产", rows.len());
+
+                let ids: Vec<uuid::Uuid> = rows.iter().map(|r| r.0).collect();
+                for (_, file_path, proxy_path, thumb_path, volume_id) in &rows {
+                    let raw_abs = vol_gc.resolve_asset_path(file_path, *volume_id).await
+                        .unwrap_or_else(|_| cfg_gc.resolve_under_root(file_path));
+                    let _ = tokio::fs::remove_file(&raw_abs).await;
+                    if let Some(p) = proxy_path { let _ = tokio::fs::remove_file(cfg_gc.resolve_under_root(p)).await; }
+                    if let Some(p) = thumb_path { let _ = tokio::fs::remove_file(cfg_gc.resolve_under_root(p)).await; }
+                }
+
+                let _ = sqlx::query("DELETE FROM asset_embeddings WHERE asset_id = ANY($1)").bind(&ids).execute(&pool_gc).await;
+                let _ = sqlx::query("DELETE FROM embedding_jobs WHERE asset_id = ANY($1)").bind(&ids).execute(&pool_gc).await;
+                let _ = sqlx::query("DELETE FROM transcode_jobs WHERE asset_id = ANY($1)").bind(&ids).execute(&pool_gc).await;
+                let _ = sqlx::query("DELETE FROM asset_folders WHERE asset_id = ANY($1)").bind(&ids).execute(&pool_gc).await;
+                let _ = sqlx::query("DELETE FROM assets WHERE id = ANY($1)").bind(&ids).execute(&pool_gc).await;
+                tracing::info!("回收站清理完成");
+            }
+        });
+    }
+
     // 磁盘空间定时检查（每 60 秒）
     {
         let vm = vol_mgr.clone();

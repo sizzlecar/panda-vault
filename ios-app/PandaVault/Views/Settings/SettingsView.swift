@@ -8,6 +8,7 @@ struct SettingsView: View {
     @State private var isTesting = false
     @State private var folders: [Folder] = []
     @State private var autoBackup = UserDefaults.standard.bool(forKey: "autoBackup")
+    @State private var trashCount = 0
 
     private static let lastSyncFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -129,6 +130,23 @@ struct SettingsView: View {
                     statRow(label: "上次同步", value: lastSyncText, color: PV.pink)
                 }
 
+                // MARK: - Trash
+                Section {
+                    NavigationLink {
+                        TrashView(api: appState.api)
+                    } label: {
+                        HStack {
+                            Label("最近删除", systemImage: "trash")
+                            Spacer()
+                            Text("\(trashCount)")
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                } header: {
+                    PixelSectionHeader(title: "存储管理")
+                }
+
                 // MARK: - About
                 Section {
                     HStack {
@@ -162,6 +180,7 @@ struct SettingsView: View {
             .task {
                 serverInput = appState.serverURL
                 await loadFolders()
+                trashCount = (try? await appState.api.getTrash(limit: 1000))?.count ?? 0
             }
         }
     }

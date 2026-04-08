@@ -58,6 +58,10 @@ pub fn routes(state: AppState) -> Router {
         .route("/api/folders/:id/assets", get(list_folder_assets))
         .route("/api/folders/:id/assets/:asset_id", post(add_asset_to_folder))
         .route("/api/folders/:id/assets/:asset_id", delete(remove_asset_from_folder))
+        // 回收站
+        .route("/api/assets/trash", get(list_trash))
+        .route("/api/assets/restore", post(restore_assets))
+        .route("/api/assets/trash/empty", post(empty_trash))
         // 存储卷管理
         .route("/api/volumes", get(list_volumes).post(create_volume))
         .route("/api/volumes/:id", get(get_volume_detail))
@@ -1044,6 +1048,172 @@ async fn batch_delete_assets(
         }
         Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
+}
+
+// ============ 回收站 ============
+
+#[derive(Deserialize)]
+struct TrashQuery {
+    limit: Option<i64>,
+    offset: Option<i64>,
+}
+
+/// GET /api/assets/trash — 列出已删除资产
+async fn list_trash(
+    State(state): State<AppState>,
+    Query(q): Query<TrashQuery>,
+) -> Response {
+    let limit = q.limit.unwrap_or(200).clamp(1, 500);
+    let offset = q.offset.unwrap_or(0).max(0);
+
+    let rows = sqlx::query_as::<_, TrashRow>(
+        r#"
+        SELECT id, filename, file_path, proxy_path, thumb_path, file_hash, size_bytes,
+               shoot_at, created_at, duration_sec, width, height, deleted_at
+        FROM assets
+        WHERE is_deleted = TRUE
+        ORDER BY deleted_at DESC
+        LIMIT $1 OFFSET $2
+        "#,
+    )
+    .bind(limit)
+    .bind(offset)
+    .fetch_all(&state.pool)
+    .await;
+
+    match rows {
+        Ok(rows) => {
+            let items: Vec<_> = rows.into_iter().map(|r| serde_json::json!({
+                "id": r.id,
+                "filename": r.filename,
+                "file_path": r.file_path,
+                "proxy_path": r.proxy_path,
+                "thumb_path": r.thumb_path,
+                "file_hash": r.file_hash,
+                "size_bytes": r.size_bytes,
+                "shoot_at": r.shoot_at.map(|d| d.and_utc().timestamp() as f64),
+                "created_at": r.created_at.map(|d| d.and_utc().timestamp() as f64),
+                "duration_sec": r.duration_sec,
+                "width": r.width,
+                "height": r.height,
+                "deleted_at": r.deleted_at.map(|d| d.and_utc().timestamp() as f64),
+            })).collect();
+            (StatusCode::OK, Json(items)).into_response()
+        }
+        Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
+#[derive(sqlx::FromRow)]
+struct TrashRow {
+    id: Uuid,
+    filename: String,
+    file_path: String,
+    proxy_path: Option<String>,
+    thumb_path: Option<String>,
+    file_hash: String,
+    size_bytes: i64,
+    shoot_at: Option<NaiveDateTime>,
+    created_at: Option<NaiveDateTime>,
+    duration_sec: Option<i32>,
+    width: Option<i32>,
+    height: Option<i32>,
+    deleted_at: Option<NaiveDateTime>,
+}
+
+/// POST /api/assets/restore — 恢复已删除资产
+async fn restore_assets(
+    State(state): State<AppState>,
+    Json(req): Json<BatchDeleteRequest>,
+) -> Response {
+    if req.ids.is_empty() {
+        return json_err(StatusCode::BAD_REQUEST, "ids 不能为空").into_response();
+    }
+    let result = sqlx::query(
+        "UPDATE assets SET is_deleted = FALSE, deleted_at = NULL, deleted_by = NULL WHERE id = ANY($1) AND is_deleted = TRUE",
+    )
+    .bind(&req.ids)
+    .execute(&state.pool)
+    .await;
+
+    match result {
+        Ok(r) => (StatusCode::OK, Json(serde_json::json!({
+            "restored": r.rows_affected()
+        }))).into_response(),
+        Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
+/// POST /api/assets/trash/empty — 永久删除（清理文件 + DB 记录）
+async fn empty_trash(
+    State(state): State<AppState>,
+    Json(req): Json<EmptyTrashRequest>,
+) -> Response {
+    // 获取要删除的资产
+    let rows: Vec<TrashFileRow> = if req.ids.is_empty() {
+        // 不传 ids → 删除所有已过期（7天）的
+        sqlx::query_as(
+            r#"SELECT id, file_path, proxy_path, thumb_path, volume_id
+               FROM assets WHERE is_deleted = TRUE AND deleted_at < NOW() - INTERVAL '7 days'"#,
+        )
+        .fetch_all(&state.pool)
+        .await
+        .unwrap_or_default()
+    } else {
+        sqlx::query_as(
+            "SELECT id, file_path, proxy_path, thumb_path, volume_id FROM assets WHERE id = ANY($1) AND is_deleted = TRUE",
+        )
+        .bind(&req.ids)
+        .fetch_all(&state.pool)
+        .await
+        .unwrap_or_default()
+    };
+
+    if rows.is_empty() {
+        return (StatusCode::OK, Json(serde_json::json!({"deleted": 0}))).into_response();
+    }
+
+    let ids: Vec<Uuid> = rows.iter().map(|r| r.id).collect();
+
+    // 删除磁盘文件
+    for row in &rows {
+        let raw_abs = state.volumes.resolve_asset_path(&row.file_path, row.volume_id).await
+            .unwrap_or_else(|_| state.cfg.resolve_under_root(&row.file_path));
+        let _ = tokio::fs::remove_file(&raw_abs).await;
+        if let Some(ref p) = row.proxy_path {
+            let _ = tokio::fs::remove_file(state.cfg.resolve_under_root(p)).await;
+        }
+        if let Some(ref p) = row.thumb_path {
+            let _ = tokio::fs::remove_file(state.cfg.resolve_under_root(p)).await;
+        }
+    }
+
+    // 级联删除 DB 记录
+    let _ = sqlx::query("DELETE FROM asset_embeddings WHERE asset_id = ANY($1)").bind(&ids).execute(&state.pool).await;
+    let _ = sqlx::query("DELETE FROM embedding_jobs WHERE asset_id = ANY($1)").bind(&ids).execute(&state.pool).await;
+    let _ = sqlx::query("DELETE FROM transcode_jobs WHERE asset_id = ANY($1)").bind(&ids).execute(&state.pool).await;
+    let _ = sqlx::query("DELETE FROM asset_folders WHERE asset_id = ANY($1)").bind(&ids).execute(&state.pool).await;
+    let result = sqlx::query("DELETE FROM assets WHERE id = ANY($1)").bind(&ids).execute(&state.pool).await;
+
+    match result {
+        Ok(r) => (StatusCode::OK, Json(serde_json::json!({"deleted": r.rows_affected()}))).into_response(),
+        Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+struct EmptyTrashRequest {
+    #[serde(default)]
+    ids: Vec<Uuid>,
+}
+
+#[derive(sqlx::FromRow)]
+struct TrashFileRow {
+    id: Uuid,
+    file_path: String,
+    proxy_path: Option<String>,
+    thumb_path: Option<String>,
+    volume_id: Option<Uuid>,
 }
 
 // ============ 同步任务 ============

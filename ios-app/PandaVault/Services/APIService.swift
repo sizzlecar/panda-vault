@@ -105,6 +105,24 @@ final class APIService: Sendable {
         return resp.results.map(\.asset)
     }
 
+    // MARK: - Trash
+
+    func getTrash(limit: Int = 200, offset: Int = 0) async throws -> [Asset] {
+        return try await get("/api/assets/trash?limit=\(limit)&offset=\(offset)")
+    }
+
+    func restoreAssets(ids: [UUID]) async throws {
+        struct Req: Codable { let ids: [UUID] }
+        struct Resp: Decodable { let restored: Int }
+        let _: Resp = try await post("/api/assets/restore", body: Req(ids: ids))
+    }
+
+    func permanentlyDeleteAssets(ids: [UUID]) async throws {
+        struct Req: Codable { let ids: [UUID] }
+        struct Resp: Decodable { let deleted: Int }
+        let _: Resp = try await post("/api/assets/trash/empty", body: Req(ids: ids))
+    }
+
     // MARK: - Duplicate Check
 
     struct DuplicateCheckResult: Decodable {

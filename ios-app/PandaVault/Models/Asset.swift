@@ -13,6 +13,30 @@ struct Asset: Codable, Identifiable, Equatable {
     let durationSec: Int?
     let width: Int?
     let height: Int?
+    let deletedAt: Date?
+
+    // deletedAt 是可选的，普通列表接口不返回
+    enum CodingKeys: String, CodingKey {
+        case id, filename, filePath, proxyPath, thumbPath, fileHash, sizeBytes
+        case shootAt, createdAt, durationSec, width, height, deletedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        filename = try c.decode(String.self, forKey: .filename)
+        filePath = try c.decode(String.self, forKey: .filePath)
+        proxyPath = try c.decodeIfPresent(String.self, forKey: .proxyPath)
+        thumbPath = try c.decodeIfPresent(String.self, forKey: .thumbPath)
+        fileHash = try c.decode(String.self, forKey: .fileHash)
+        sizeBytes = try c.decode(Int64.self, forKey: .sizeBytes)
+        shootAt = try c.decodeIfPresent(Date.self, forKey: .shootAt)
+        createdAt = try c.decode(Date.self, forKey: .createdAt)
+        durationSec = try c.decodeIfPresent(Int.self, forKey: .durationSec)
+        width = try c.decodeIfPresent(Int.self, forKey: .width)
+        height = try c.decodeIfPresent(Int.self, forKey: .height)
+        deletedAt = try c.decodeIfPresent(Date.self, forKey: .deletedAt)
+    }
 
     var isVideo: Bool {
         let ext = (filename as NSString).pathExtension.lowercased()
