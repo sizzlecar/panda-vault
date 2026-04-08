@@ -309,20 +309,25 @@ async fn find_video_duplicate(
     let Some(w) = width else { return Ok(None) };
     let Some(h) = height else { return Ok(None) };
 
+    // iOS 每次导出视频会重新封装，文件大小有微小差异（~1%），用范围匹配
+    let size_lo = (size_bytes as f64 * 0.99) as i64;
+    let size_hi = (size_bytes as f64 * 1.01) as i64;
+
     let row = sqlx::query_as::<_, DedupRow>(
         r#"
         SELECT id, filename, file_path, proxy_path, thumb_path, file_hash, size_bytes,
                shoot_at, created_at, duration_sec, width, height, is_deleted
         FROM assets
-        WHERE size_bytes = $1
-          AND duration_sec = $2
-          AND width = $3
-          AND height = $4
+        WHERE size_bytes BETWEEN $1 AND $2
+          AND duration_sec = $3
+          AND width = $4
+          AND height = $5
           AND is_deleted = FALSE
         LIMIT 1
         "#,
     )
-    .bind(size_bytes)
+    .bind(size_lo)
+    .bind(size_hi)
     .bind(dur)
     .bind(w)
     .bind(h)
