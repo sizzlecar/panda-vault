@@ -4,6 +4,8 @@ struct AssetThumbnail: View {
     let asset: Asset
     let api: APIService
 
+    @State private var retryId = 0
+
     var body: some View {
         ZStack(alignment: .bottomLeading) {
             Color(.secondarySystemFill)
@@ -16,12 +18,21 @@ struct AssetThumbnail: View {
                                 .resizable()
                                 .aspectRatio(contentMode: .fill)
                         case .failure:
-                            Image(systemName: asset.isVideo ? "video" : "photo")
+                            Button {
+                                retryId += 1
+                            } label: {
+                                VStack(spacing: 4) {
+                                    Image(systemName: asset.isVideo ? "video" : "photo")
+                                    Image(systemName: "arrow.clockwise")
+                                        .font(.system(size: 10))
+                                }
                                 .foregroundStyle(.tertiary)
+                            }
                         default:
                             ProgressView().tint(PV.cyan)
                         }
                     }
+                    .id(retryId)
                 }
                 .clipped()
 

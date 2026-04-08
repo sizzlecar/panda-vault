@@ -9,6 +9,7 @@ final class GalleryViewModel: ObservableObject {
     @Published var isImageSearchResult = false
     @Published var timeline: [TimelineGroup] = []
     @Published var folders: [Folder] = []
+    @Published var errorMessage: String?
 
     /// 每月资产的加载状态，用于驱动 UI 显示 loading indicator
     @Published var monthLoadingStates: [String: MonthLoadState] = [:]
@@ -52,16 +53,24 @@ final class GalleryViewModel: ObservableObject {
                 TimelineGroup(day: m, count: monthMap[m] ?? 0)
             }
             isImageSearchResult = false
-        } catch { print("[PandaVault] loadTimeline error: \(error)") }
+            errorMessage = nil
+        } catch {
+            errorMessage = "无法连接服务器"
+            print("[PandaVault] loadTimeline error: \(error)")
+        }
     }
 
     /// 兼容旧调用点：pull-to-refresh 和 server URL 变更时使用
     func loadTimelineAndAssets() async {
-        // 清除缓存，重新加载 timeline，可见月份会按需重新加载
+        // 清除缓存，重新加载 timeline
         monthlyAssets = [:]
         monthsInFlight = []
         monthLoadingStates = [:]
         await loadTimeline()
+        // 刷新后主动加载前几个月，避免 onAppear 不重新触发
+        for group in timeline.prefix(3) {
+            ensureMonthLoaded(group.month)
+        }
     }
 
     // MARK: - Per-Month Lazy Loading

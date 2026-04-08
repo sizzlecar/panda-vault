@@ -17,6 +17,8 @@ struct GalleryView: View {
     @State private var moveMessage = ""
     @State private var shareItems: [Any] = []
     @State private var showShareSheet = false
+    @State private var isSharing = false
+    @State private var shareProgress = ""
     @State private var imageSearchItem: PhotosPickerItem?
 
     init() {
@@ -89,8 +91,24 @@ struct GalleryView: View {
             } message: {
                 Text(moveMessage)
             }
-            .sheet(isPresented: $showShareSheet) {
+            .sheet(isPresented: $showShareSheet, onDismiss: cleanupShareFiles) {
                 ActivityView(items: shareItems)
+            }
+            .overlay {
+                if isSharing {
+                    ZStack {
+                        Color.black.opacity(0.4).ignoresSafeArea()
+                        VStack(spacing: 12) {
+                            ProgressView().tint(.white).scaleEffect(1.2)
+                            Text(shareProgress)
+                                .font(.system(.caption, design: .monospaced).bold())
+                                .foregroundStyle(.white)
+                        }
+                        .padding(24)
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+                        .environment(\.colorScheme, .dark)
+                    }
+                }
             }
         }
         .onAppear { vm.updateAPI(appState.api) }
@@ -119,12 +137,27 @@ struct GalleryView: View {
             }
         }
         ToolbarItem(placement: .topBarTrailing) {
-            Button {
-                isSelecting.toggle()
-                if !isSelecting { selectedIds.removeAll() }
-            } label: {
-                Text(isSelecting ? "完成" : "选择")
-                    .foregroundStyle(PV.cyan)
+            HStack(spacing: 12) {
+                if isSelecting {
+                    Button {
+                        let allIds = Set(vm.allAssetsOrdered.map(\.id))
+                        if selectedIds == allIds {
+                            selectedIds.removeAll()
+                        } else {
+                            selectedIds = allIds
+                        }
+                    } label: {
+                        Text(selectedIds.count == vm.allAssetsOrdered.count ? "取消全选" : "全选")
+                            .foregroundStyle(PV.cyan)
+                    }
+                }
+                Button {
+                    isSelecting.toggle()
+                    if !isSelecting { selectedIds.removeAll() }
+                } label: {
+                    Text(isSelecting ? "完成" : "选择")
+                        .foregroundStyle(PV.cyan)
+                }
             }
         }
     }
@@ -158,10 +191,23 @@ struct GalleryView: View {
         await vm.loadTimelineAndAssets()
     }
 
+    private func cleanupShareFiles() {
+        for item in shareItems {
+            if let url = item as? URL {
+                try? FileManager.default.removeItem(at: url)
+            }
+        }
+        shareItems = []
+    }
+
     private func batchShare() async {
         let assets = vm.allAssetsOrdered.filter { selectedIds.contains($0.id) }
+        isSharing = true
+        defer { isSharing = false }
+
         var localFiles: [Any] = []
-        for asset in assets {
+        for (i, asset) in assets.enumerated() {
+            shareProgress = "下载中 \(i + 1)/\(assets.count)..."
             do {
                 let tempURL = try await appState.api.downloadAsset(id: asset.id) { _ in }
                 let ext = (asset.filename as NSString).pathExtension
@@ -289,6 +335,10 @@ private struct GalleryTimelineView: View {
                             selectedIds: $selectedIds,
                             selectedAsset: $selectedAsset
                         )
+                    } else if let err = vm.errorMessage {
+                        GalleryErrorState(message: err) {
+                            Task { await vm.loadTimelineAndAssets() }
+                        }
                     } else if vm.timeline.isEmpty && !vm.isLoading {
                         GalleryEmptyState()
                     } else {
@@ -412,6 +462,7 @@ private struct GalleryAssetCell: View {
     @Binding var selectedAsset: Asset?
 
     var body: some View {
+        let isSelected = isSelecting && selectedIds.contains(asset.id)
         Button {
             if isSelecting {
                 toggleSelection()
@@ -420,23 +471,34 @@ private struct GalleryAssetCell: View {
             }
         } label: {
             AssetThumbnail(asset: asset, api: api)
-                .overlay(alignment: .topTrailing) {
-                    selectionOverlay
+                .overlay {
+                    if isSelected {
+                        Color.black.opacity(0.2)
+                    }
                 }
+                .overlay(alignment: .topTrailing) {
+                    if isSelecting {
+                        ZStack {
+                            Circle()
+                                .fill(isSelected ? PV.cyan : .black.opacity(0.3))
+                                .frame(width: 22, height: 22)
+                            if isSelected {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundStyle(.white)
+                            } else {
+                                Circle()
+                                    .strokeBorder(.white, lineWidth: 1.5)
+                                    .frame(width: 22, height: 22)
+                            }
+                        }
+                        .shadow(color: .black.opacity(0.3), radius: 2)
+                        .padding(6)
+                    }
+                }
+                .border(isSelected ? PV.cyan : .clear, width: 2)
         }
         .buttonStyle(.plain)
-    }
-
-    @ViewBuilder
-    private var selectionOverlay: some View {
-        if isSelecting {
-            let isSelected = selectedIds.contains(asset.id)
-            Image(systemName: isSelected ? "checkmark.square.fill" : "square")
-                .font(.body)
-                .foregroundStyle(isSelected ? PV.cyan : .white.opacity(0.6))
-                .shadow(radius: 2)
-                .padding(5)
-        }
     }
 
     private func toggleSelection() {
@@ -490,6 +552,32 @@ private struct GalleryEmptyState: View {
             Text("从「上传」页面添加视频或图片")
                 .font(.system(.caption, design: .monospaced))
                 .foregroundStyle(.tertiary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 100)
+    }
+}
+
+private struct GalleryErrorState: View {
+    let message: String
+    let onRetry: () -> Void
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "wifi.exclamationmark")
+                .font(.system(size: 36))
+                .foregroundStyle(.tertiary)
+            Text(message)
+                .font(.system(.caption, design: .monospaced).bold())
+                .foregroundStyle(.secondary)
+            Button(action: onRetry) {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.clockwise")
+                    Text("重试")
+                }
+                .font(.system(.subheadline, design: .monospaced).bold())
+                .foregroundStyle(PV.cyan)
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 100)
@@ -596,7 +684,7 @@ private struct GalleryBatchToolbar: View {
             }
             .padding(.vertical, 8)
         }
-        .background(.ultraThinMaterial)
+        .background(.regularMaterial)
     }
 
     private func batchButton(icon: String, label: String, color: Color, action: @escaping () -> Void) -> some View {
