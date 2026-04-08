@@ -273,6 +273,11 @@ async fn process_one_file(
         }
     };
 
+    // 计算首尾指纹
+    let (head_hash, tail_hash) = media::compute_head_tail_hash_from_file(abs_path)
+        .map(|(h, t)| (Some(h), Some(t)))
+        .unwrap_or((None, None));
+
     // 入库
     let new_asset = media::NewAsset {
         id: asset_id,
@@ -287,6 +292,8 @@ async fn process_one_file(
         width: probe_info.as_ref().and_then(|p| p.width),
         height: probe_info.as_ref().and_then(|p| p.height),
         uploaded_by: Some("scan".to_string()),
+        head_hash,
+        tail_hash,
     };
 
     api::insert_asset_and_job(&state.pool, &new_asset).await?;

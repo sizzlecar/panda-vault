@@ -21,6 +21,8 @@ pub struct NewAsset {
     pub width: Option<i32>,
     pub height: Option<i32>,
     pub uploaded_by: Option<String>,
+    pub head_hash: Option<String>,
+    pub tail_hash: Option<String>,
 }
 
 #[derive(sqlx::FromRow)]
@@ -100,13 +102,16 @@ pub async fn ingest_upload_bytes(
 
     let mut f = tokio::fs::File::create(&temp_abs).await?;
     let mut hasher = Sha256::new();
-    
+
     hasher.update(&data);
     f.write_all(&data).await?;
     let size = data.len() as u64;
     f.flush().await?;
 
     let file_hash = hex::encode(hasher.finalize());
+
+    // 计算首尾 1MB hash（用于上传预检指纹）
+    let (head_hash, tail_hash) = compute_head_tail_hash_from_bytes(&data);
 
     // 1. 首先尝试 SHA256 哈希去重（对图片有效）
     if let Some(existing) = find_by_hash(&state.pool, &file_hash).await? {
@@ -197,6 +202,11 @@ pub async fn ingest_upload_bytes(
         tokio::fs::remove_file(&temp_abs).await?;
     }
 
+    // 用 ffprobe 提取元数据（拍摄时间、时长、分辨率）
+    let probe_info = probe(&state.cfg, &raw_abs).await.ok();
+    // 客户端传了 shoot_at 优先，否则用 EXIF/元数据中的拍摄时间
+    let final_shoot_at = shoot_at.or_else(|| probe_info.as_ref().and_then(|p| p.shoot_at));
+
     // 同步生成一张缩略图（一期要求）
     let thumb_rel = format!("/proxies/{:04}/{:02}/{}_thumb.jpg", yyyy, mm, asset_id);
     let thumb_abs = state.cfg.resolve_under_root(&thumb_rel);
@@ -220,11 +230,13 @@ pub async fn ingest_upload_bytes(
         thumb_path,
         file_hash,
         size_bytes: size as i64,
-        shoot_at,
-        duration_sec: None,
-        width: None,
-        height: None,
+        shoot_at: final_shoot_at,
+        duration_sec: probe_info.as_ref().and_then(|p| p.duration_sec),
+        width: probe_info.as_ref().and_then(|p| p.width),
+        height: probe_info.as_ref().and_then(|p| p.height),
         uploaded_by: device_id.map(|s| s.to_string()),
+        head_hash: Some(head_hash),
+        tail_hash: Some(tail_hash),
     };
 
     api::insert_asset_and_job(&state.pool, &new_asset).await?;
@@ -323,7 +335,7 @@ async fn find_by_id(pool: &PgPool, id: Uuid) -> anyhow::Result<Option<crate::api
     let row = sqlx::query_as::<_, crate::api::AssetRow>(
         r#"
         SELECT id, filename, file_path, proxy_path, thumb_path, file_hash, size_bytes,
-               shoot_at, created_at, duration_sec, width, height
+               shoot_at, created_at, duration_sec, width, height, volume_id
         FROM assets
         WHERE id = $1
         "#,
@@ -462,6 +474,40 @@ pub async fn probe(cfg: &Config, input: &std::path::Path) -> anyhow::Result<Prob
         width,
         height,
     })
+}
+
+// ============ 首尾 hash 工具函数 ============
+
+const HEAD_TAIL_SIZE: usize = 1024 * 1024; // 1MB
+
+/// 从内存 Bytes 计算首尾 1MB hash
+fn compute_head_tail_hash_from_bytes(data: &[u8]) -> (String, String) {
+    let head_end = data.len().min(HEAD_TAIL_SIZE);
+    let head_hash = hex::encode(Sha256::digest(&data[..head_end]));
+
+    let tail_start = data.len().saturating_sub(HEAD_TAIL_SIZE);
+    let tail_hash = hex::encode(Sha256::digest(&data[tail_start..]));
+
+    (head_hash, tail_hash)
+}
+
+/// 从文件路径计算首尾 1MB hash（用于 backfill 和分片上传）
+pub fn compute_head_tail_hash_from_file(path: &std::path::Path) -> anyhow::Result<(String, String)> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut file = std::fs::File::open(path)?;
+    let file_len = file.metadata()?.len();
+
+    let mut head_buf = vec![0u8; (file_len as usize).min(HEAD_TAIL_SIZE)];
+    file.read_exact(&mut head_buf)?;
+    let head_hash = hex::encode(Sha256::digest(&head_buf));
+
+    let tail_start = file_len.saturating_sub(HEAD_TAIL_SIZE as u64);
+    file.seek(SeekFrom::Start(tail_start))?;
+    let mut tail_buf = vec![0u8; (file_len - tail_start) as usize];
+    file.read_exact(&mut tail_buf)?;
+    let tail_hash = hex::encode(Sha256::digest(&tail_buf));
+
+    Ok((head_hash, tail_hash))
 }
 
 fn parse_creation_time(tags: &serde_json::Value) -> Option<NaiveDateTime> {

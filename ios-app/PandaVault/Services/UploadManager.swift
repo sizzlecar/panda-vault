@@ -64,9 +64,9 @@ final class UploadManager: ObservableObject {
         return "\(done)/\(total) 完成"
     }
 
-    func addFiles(_ urls: [(url: URL, filename: String, size: Int64)], folderId: UUID? = nil) {
+    func addFiles(_ urls: [(url: URL, filename: String, size: Int64, shootAt: Date?)], folderId: UUID? = nil) {
         for file in urls {
-            let task = UploadTask(filename: file.filename, fileURL: file.url, fileSize: file.size, folderId: folderId)
+            let task = UploadTask(filename: file.filename, fileURL: file.url, fileSize: file.size, folderId: folderId, shootAt: file.shootAt)
             tasks.append(task)
         }
         Task { await processQueue() }
@@ -111,6 +111,16 @@ final class UploadManager: ObservableObject {
             try? FileManager.default.removeItem(at: task.fileURL)
         }
 
+        // 上传前预检：首尾 hash 判重，命中则跳过上传
+        if let fp = await FileFingerprint.compute(url: task.fileURL, size: task.fileSize) {
+            if let result = try? await api.checkDuplicate(size: fp.size, headHash: fp.headHash, tailHash: fp.tailHash),
+               result.exists {
+                let assetId = result.assetId ?? UUID()
+                await MainActor.run { task.status = .duplicated(assetId: assetId) }
+                return
+            }
+        }
+
         for attempt in 1...maxRetries {
             do {
                 if task.fileSize < largeFileThreshold {
@@ -146,6 +156,9 @@ final class UploadManager: ObservableObject {
         if let fid = task.folderId {
             body.appendMultipart(boundary: boundary, name: "folder_id", value: fid.uuidString)
         }
+        if let shootAt = task.shootAt {
+            body.appendMultipart(boundary: boundary, name: "shoot_at", value: "\(shootAt.timeIntervalSince1970)")
+        }
         body.appendMultipart(boundary: boundary, name: "file", filename: task.filename, data: fileData)
         body.append("--\(boundary)--\r\n".data(using: .utf8)!)
         request.httpBody = body
@@ -165,17 +178,17 @@ final class UploadManager: ObservableObject {
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         decoder.dateDecodingStrategy = .secondsSince1970
 
-        struct Wrapper: Decodable { let deduped: Bool; let asset: Asset }
+        struct Wrapper: Decodable { let asset: Asset }
         let w = try decoder.decode(Wrapper.self, from: data)
 
-        await MainActor.run { task.status = w.deduped ? .duplicated(assetId: w.asset.id) : .completed(assetId: w.asset.id) }
+        await MainActor.run { task.status = .completed(assetId: w.asset.id) }
     }
 
     // MARK: - Chunked Upload (>= 50MB)
 
     private func chunkedUpload(_ task: UploadTask) async throws {
         // 1. Init
-        let initResp = try await api.initChunkedUpload(filename: task.filename, fileSize: task.fileSize)
+        let initResp = try await api.initChunkedUpload(filename: task.filename, fileSize: task.fileSize, shootAt: task.shootAt)
 
         // 2. Query offset (断点续传)
         let offsetResp = try await api.queryUploadOffset(uploadId: initResp.uploadId)
@@ -208,9 +221,7 @@ final class UploadManager: ObservableObject {
         }
 
         await MainActor.run {
-            task.status = result.duplicate
-                ? .duplicated(assetId: result.assetId)
-                : .completed(assetId: result.assetId)
+            task.status = .completed(assetId: result.assetId)
         }
     }
 }

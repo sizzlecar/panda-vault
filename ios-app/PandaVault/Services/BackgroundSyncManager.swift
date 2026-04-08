@@ -183,10 +183,9 @@ final class SyncEngine: ObservableObject {
             defer { try? FileManager.default.removeItem(at: exported.url) }
 
             // 在后台线程算指纹
-            let fingerprint = await Self.computeFingerprint(url: exported.url, size: exported.size)
-            if let fp = fingerprint {
-                let exists = try? await api.checkDuplicate(fingerprint: fp)
-                if exists == true {
+            if let fp = await FileFingerprint.compute(url: exported.url, size: exported.size) {
+                let result = try? await api.checkDuplicate(size: fp.size, headHash: fp.headHash, tailHash: fp.tailHash)
+                if result?.exists == true {
                     syncedIds.insert(phAsset.localIdentifier)
                     syncedCount += 1
                     return
@@ -203,22 +202,6 @@ final class SyncEngine: ObservableObject {
         } catch {
             failedCount += 1
         }
-    }
-
-    // MARK: - Fingerprint (文件大小 + 首 1MB SHA256) — 后台线程执行
-
-    private static func computeFingerprint(url: URL, size: Int64) async -> String? {
-        await Task.detached {
-            guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
-            defer { try? handle.close() }
-
-            let headSize = min(1024 * 1024, Int(size))
-            guard let headData = try? handle.read(upToCount: headSize) else { return nil }
-
-            let hash = SHA256.hash(data: headData)
-            let hashStr = hash.compactMap { String(format: "%02x", $0) }.joined()
-            return "\(size)_\(hashStr)"
-        }.value
     }
 
     // MARK: - Persistence

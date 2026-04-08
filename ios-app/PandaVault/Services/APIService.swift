@@ -107,11 +107,14 @@ final class APIService: Sendable {
 
     // MARK: - Duplicate Check
 
-    func checkDuplicate(fingerprint: String) async throws -> Bool {
-        struct Req: Codable { let fingerprint: String }
-        struct Resp: Decodable { let exists: Bool }
-        let resp: Resp = try await post("/api/assets/check-duplicate", body: Req(fingerprint: fingerprint))
-        return resp.exists
+    struct DuplicateCheckResult: Decodable {
+        let exists: Bool
+        let assetId: UUID?
+    }
+
+    func checkDuplicate(size: Int64, headHash: String, tailHash: String) async throws -> DuplicateCheckResult {
+        struct Req: Codable { let size: Int64; let headHash: String; let tailHash: String }
+        return try await post("/api/assets/check-duplicate", body: Req(size: size, headHash: headHash, tailHash: tailHash))
     }
 
     // MARK: - Folders
@@ -243,9 +246,10 @@ final class APIService: Sendable {
 
     // MARK: - Chunked Upload
 
-    func initChunkedUpload(filename: String, fileSize: Int64) async throws -> UploadInitResponse {
-        struct InitRequest: Codable { let filename: String; let fileSize: Int64 }
-        return try await post("/api/upload/init", body: InitRequest(filename: filename, fileSize: fileSize))
+    func initChunkedUpload(filename: String, fileSize: Int64, shootAt: Date? = nil) async throws -> UploadInitResponse {
+        struct InitRequest: Codable { let filename: String; let fileSize: Int64; let shootAt: Double? }
+        let ts = shootAt.map { $0.timeIntervalSince1970 }
+        return try await post("/api/upload/init", body: InitRequest(filename: filename, fileSize: fileSize, shootAt: ts))
     }
 
     func queryUploadOffset(uploadId: String) async throws -> UploadOffsetResponse {

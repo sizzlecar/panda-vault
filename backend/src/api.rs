@@ -281,41 +281,40 @@ struct ListQuery {
     month: Option<String>,
 }
 
-/// 快速检查文件是否已存在（用 fingerprint = "size_headhash"）
+/// 快速检查文件是否已存在（用 size + head_hash + tail_hash 三元组）
 async fn check_duplicate(
     State(state): State<AppState>,
     Json(req): Json<CheckDuplicateRequest>,
 ) -> Response {
-    // fingerprint 格式: "12345_abcdef..." (size_headsha256)
-    let parts: Vec<&str> = req.fingerprint.splitn(2, '_').collect();
-    if parts.len() != 2 {
-        return json_err(StatusCode::BAD_REQUEST, "fingerprint 格式错误").into_response();
-    }
-    let size: i64 = match parts[0].parse() {
-        Ok(v) => v,
-        Err(_) => return json_err(StatusCode::BAD_REQUEST, "size 无效").into_response(),
+    let row: Option<(Uuid,)> = sqlx::query_as(
+        "SELECT id FROM assets WHERE size_bytes = $1 AND head_hash = $2 AND tail_hash = $3 AND is_deleted = FALSE LIMIT 1",
+    )
+    .bind(req.size)
+    .bind(&req.head_hash)
+    .bind(&req.tail_hash)
+    .fetch_optional(&state.pool)
+    .await
+    .unwrap_or(None);
+
+    let (exists, asset_id) = match row {
+        Some((id,)) => (true, Some(id)),
+        None => (false, None),
     };
 
-    // 先用文件大小快速过滤
-    let exists: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM assets WHERE size_bytes = $1 AND is_deleted = FALSE)",
-    )
-    .bind(size)
-    .fetch_one(&state.pool)
-    .await
-    .unwrap_or(false);
-
-    (StatusCode::OK, Json(CheckDuplicateResponse { exists })).into_response()
+    (StatusCode::OK, Json(CheckDuplicateResponse { exists, asset_id })).into_response()
 }
 
 #[derive(Deserialize)]
 struct CheckDuplicateRequest {
-    fingerprint: String,
+    size: i64,
+    head_hash: String,
+    tail_hash: String,
 }
 
 #[derive(Serialize)]
 struct CheckDuplicateResponse {
     exists: bool,
+    asset_id: Option<Uuid>,
 }
 
 async fn list_assets(
@@ -614,8 +613,8 @@ async fn timeline(State(state): State<AppState>) -> Response {
 pub async fn insert_asset_and_job(pool: &PgPool, asset: &media::NewAsset) -> anyhow::Result<()> {
     sqlx::query(
         r#"
-        INSERT INTO assets (id, filename, file_path, proxy_path, thumb_path, file_hash, size_bytes, shoot_at, duration_sec, width, height, uploaded_by)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+        INSERT INTO assets (id, filename, file_path, proxy_path, thumb_path, file_hash, size_bytes, shoot_at, duration_sec, width, height, uploaded_by, head_hash, tail_hash)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
         "#,
     )
     .bind(asset.id)
@@ -630,6 +629,8 @@ pub async fn insert_asset_and_job(pool: &PgPool, asset: &media::NewAsset) -> any
     .bind(asset.width)
     .bind(asset.height)
     .bind(&asset.uploaded_by)
+    .bind(&asset.head_hash)
+    .bind(&asset.tail_hash)
     .execute(pool)
     .await?;
 

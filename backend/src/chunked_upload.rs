@@ -19,6 +19,7 @@ const DEFAULT_CHUNK_SIZE: i32 = 50 * 1024 * 1024; // 50MB — 局域网大分片
 pub struct InitRequest {
     pub filename: String,
     pub file_size: i64,
+    pub shoot_at: Option<f64>,
 }
 
 #[derive(Serialize)]
@@ -50,6 +51,7 @@ struct UploadSession {
     chunk_size: i32,
     uploaded_bytes: i64,
     status: String,
+    shoot_at: Option<chrono::NaiveDateTime>,
 }
 
 // ============ Handlers ============
@@ -71,13 +73,19 @@ pub async fn init_upload(
         return json_err(StatusCode::INTERNAL_SERVER_ERROR, format!("创建临时文件失败: {e}")).into_response();
     }
 
+    let shoot_at = req.shoot_at.and_then(|ts| {
+        chrono::DateTime::from_timestamp(ts as i64, ((ts.fract()) * 1e9) as u32)
+            .map(|dt| dt.naive_utc())
+    });
+
     match sqlx::query(
-        "INSERT INTO upload_sessions (id, filename, file_size, chunk_size) VALUES ($1, $2, $3, $4)",
+        "INSERT INTO upload_sessions (id, filename, file_size, chunk_size, shoot_at) VALUES ($1, $2, $3, $4, $5)",
     )
     .bind(session_id)
     .bind(&req.filename)
     .bind(req.file_size)
     .bind(DEFAULT_CHUNK_SIZE)
+    .bind(shoot_at)
     .execute(&state.pool)
     .await
     {
@@ -216,11 +224,13 @@ pub async fn complete_upload(
         thumb_path: None,
         file_hash: placeholder_hash,
         size_bytes: file_size,
-        shoot_at: None,
+        shoot_at: session.shoot_at,
         duration_sec: None,
         width: None,
         height: None,
         uploaded_by: None,
+        head_hash: None,
+        tail_hash: None,
     };
 
     if let Err(e) = crate::api::insert_asset_and_job(&state.pool, &new_asset).await {
@@ -233,7 +243,7 @@ pub async fn complete_upload(
 
     tracing::info!("分片上传入库成功: {} ({} MB)", safe_name, file_size / 1024 / 1024);
 
-    // 后台算真实 hash（不阻塞响应）
+    // 后台算真实 hash + 首尾指纹（不阻塞响应）
     let pool = state.pool.clone();
     let raw_abs_bg = raw_abs.clone();
     tokio::spawn(async move {
@@ -256,9 +266,21 @@ pub async fn complete_upload(
                         .bind(asset_id).execute(&pool).await;
                     let _ = tokio::fs::remove_file(&raw_abs_bg).await;
                 } else {
-                    // 更新真实 hash
-                    let _ = sqlx::query("UPDATE assets SET file_hash = $2 WHERE id = $1")
-                        .bind(asset_id).bind(&real_hash).execute(&pool).await;
+                    // 更新真实 hash + 首尾指纹
+                    let ht = tokio::task::spawn_blocking({
+                        let p = raw_abs_bg.clone();
+                        move || media::compute_head_tail_hash_from_file(&p)
+                    }).await;
+                    let (head_hash, tail_hash) = match ht {
+                        Ok(Ok(v)) => v,
+                        _ => (String::new(), String::new()),
+                    };
+
+                    let _ = sqlx::query(
+                        "UPDATE assets SET file_hash = $2, head_hash = $3, tail_hash = $4 WHERE id = $1"
+                    )
+                    .bind(asset_id).bind(&real_hash).bind(&head_hash).bind(&tail_hash)
+                    .execute(&pool).await;
                 }
             }
             Err(e) => tracing::warn!("后台 hash 失败 [{}]: {}", asset_id, e),
@@ -296,7 +318,7 @@ async fn stream_hash(path: &std::path::Path) -> anyhow::Result<(String, u64)> {
 
 async fn get_session(pool: &PgPool, id: Uuid) -> anyhow::Result<Option<UploadSession>> {
     let row = sqlx::query_as::<_, UploadSession>(
-        "SELECT id, filename, file_size, chunk_size, uploaded_bytes, status FROM upload_sessions WHERE id = $1",
+        "SELECT id, filename, file_size, chunk_size, uploaded_bytes, status, shoot_at FROM upload_sessions WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(pool)

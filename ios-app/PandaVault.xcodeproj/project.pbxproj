@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		06E3DF727A4E375D1D83D7AD /* UploadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78D270CA190879A9F0B046E9 /* UploadManager.swift */; };
 		177D518F0E33FBA66032D978 /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9CAAA06C9B5E48B4F4DCB17 /* APIService.swift */; };
+		21FBDC0465DF9125E176A9BA /* FileFingerprint.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50A842737E8F8BBD794483B8 /* FileFingerprint.swift */; };
 		2D597EFA88F78B0C400DB026 /* GalleryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39645935F02BA2D5E9F2790B /* GalleryView.swift */; };
 		2D753E460B8FABFDDECBBA50 /* PandaVaultApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43ADA517816152615440546D /* PandaVaultApp.swift */; };
 		2FC5A9E92C66259B7EAF559B /* Folder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F98DD37E96545FEB0CA7EF9 /* Folder.swift */; };
@@ -39,6 +40,7 @@
 		39DB5E911B42D7BADDC91F51 /* AssetDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssetDetailView.swift; sourceTree = "<group>"; };
 		40A5487E62E77F2C531BEF4B /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		43ADA517816152615440546D /* PandaVaultApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PandaVaultApp.swift; sourceTree = "<group>"; };
+		50A842737E8F8BBD794483B8 /* FileFingerprint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileFingerprint.swift; sourceTree = "<group>"; };
 		53E83E013626C8067B67210B /* FolderDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderDetailView.swift; sourceTree = "<group>"; };
 		7268F26941B8C7629FD1C7B6 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		78D270CA190879A9F0B046E9 /* UploadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UploadManager.swift; sourceTree = "<group>"; };
@@ -82,6 +84,7 @@
 		3B5ED999742E7E63EA5134B0 /* Utils */ = {
 			isa = PBXGroup;
 			children = (
+				50A842737E8F8BBD794483B8 /* FileFingerprint.swift */,
 				C760A2FC8090E91B047AF6B6 /* Theme.swift */,
 			);
 			path = Utils;
@@ -280,6 +283,7 @@
 				45E87B7572AD5698160CC7E7 /* BonjourBrowser.swift in Sources */,
 				D83B1F2997435CC77724655C /* ContentView.swift in Sources */,
 				69A899862D6B5714E1F896C9 /* DownloadManager.swift in Sources */,
+				21FBDC0465DF9125E176A9BA /* FileFingerprint.swift in Sources */,
 				2FC5A9E92C66259B7EAF559B /* Folder.swift in Sources */,
 				86FE31542656B2560FCB0213 /* FolderDetailView.swift in Sources */,
 				2D597EFA88F78B0C400DB026 /* GalleryView.swift in Sources */,

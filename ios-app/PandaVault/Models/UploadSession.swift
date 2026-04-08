@@ -40,11 +40,13 @@ final class UploadTask: ObservableObject, Identifiable {
     @Published var status: UploadTaskStatus = .pending
 
     let folderId: UUID?
+    let shootAt: Date?
 
-    init(filename: String, fileURL: URL, fileSize: Int64, folderId: UUID? = nil) {
+    init(filename: String, fileURL: URL, fileSize: Int64, folderId: UUID? = nil, shootAt: Date? = nil) {
         self.filename = filename
         self.fileURL = fileURL
         self.fileSize = fileSize
         self.folderId = folderId
+        self.shootAt = shootAt
     }
 }

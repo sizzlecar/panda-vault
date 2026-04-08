@@ -92,6 +92,37 @@ async fn main() -> anyhow::Result<()> {
     // 后台 worker：轮询任务队列并转码/提取元数据
     jobs::spawn_worker(app_state.clone());
 
+    // 补全已有 assets 的首尾指纹（head_hash / tail_hash）
+    {
+        let pool_bf = app_state.pool.clone();
+        let storage_root = cfg.storage_root.clone();
+        tokio::spawn(async move {
+            let rows: Vec<(uuid::Uuid, String)> = sqlx::query_as(
+                "SELECT id, file_path FROM assets WHERE head_hash IS NULL AND is_deleted = FALSE"
+            ).fetch_all(&pool_bf).await.unwrap_or_default();
+
+            if rows.is_empty() { return; }
+            tracing::info!("补全首尾指纹: {} 条记录", rows.len());
+
+            for (id, file_path) in rows {
+                let rel = file_path.trim_start_matches('/');
+                let abs = storage_root.join(rel);
+                let result = tokio::task::spawn_blocking(move || {
+                    media::compute_head_tail_hash_from_file(&abs)
+                }).await;
+                match result {
+                    Ok(Ok((head, tail))) => {
+                        let _ = sqlx::query(
+                            "UPDATE assets SET head_hash = $2, tail_hash = $3 WHERE id = $1"
+                        ).bind(id).bind(&head).bind(&tail).execute(&pool_bf).await;
+                    }
+                    _ => tracing::warn!("补全指纹失败: {}", id),
+                }
+            }
+            tracing::info!("首尾指纹补全完成");
+        });
+    }
+
     // 启动时 + 定期清理过期临时文件（失败/超时的分片上传残留）
     {
         let pool_c = app_state.pool.clone();
