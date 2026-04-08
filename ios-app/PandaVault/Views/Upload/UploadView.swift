@@ -1,5 +1,6 @@
 import SwiftUI
 import PhotosUI
+import Photos
 
 private enum UploadSheetType: Identifiable {
     case folderPicker
@@ -185,18 +186,20 @@ struct UploadView: View {
         guard !items.isEmpty else { return }
 
         isExporting = true
-        var files: [(url: URL, filename: String, size: Int64)] = []
+        var files: [(url: URL, filename: String, size: Int64, shootAt: Date?)] = []
 
         for (i, item) in items.enumerated() {
             exportProgress = "导出中 \(i + 1)/\(items.count)..."
+            // 通过 PHAsset 获取原始拍摄时间
+            let shootAt = await fetchCreationDate(for: item)
             if let movie = try? await item.loadTransferable(type: VideoTransferable.self) {
                 let size = (try? FileManager.default.attributesOfItem(atPath: movie.url.path)[.size] as? Int64) ?? 0
-                files.append((movie.url, movie.url.lastPathComponent, size))
+                files.append((movie.url, movie.url.lastPathComponent, size, shootAt))
             } else if let data = try? await item.loadTransferable(type: Data.self) {
                 let name = "image_\(UUID().uuidString.prefix(8)).jpg"
                 let tmpURL = FileManager.default.temporaryDirectory.appendingPathComponent(name)
                 try? data.write(to: tmpURL)
-                files.append((tmpURL, name, Int64(data.count)))
+                files.append((tmpURL, name, Int64(data.count), shootAt))
             }
         }
 
@@ -204,6 +207,14 @@ struct UploadView: View {
         if !files.isEmpty {
             uploadManager.addFiles(files, folderId: selectedFolderId)
         }
+    }
+
+    private func fetchCreationDate(for item: PhotosPickerItem) async -> Date? {
+        guard let id = item.itemIdentifier else { return nil }
+        return await Task.detached {
+            let result = PHAsset.fetchAssets(withLocalIdentifiers: [id], options: nil)
+            return result.firstObject?.creationDate
+        }.value
     }
 }
 
