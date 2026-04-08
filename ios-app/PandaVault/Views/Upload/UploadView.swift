@@ -190,16 +190,23 @@ struct UploadView: View {
 
         for (i, item) in items.enumerated() {
             exportProgress = "导出中 \(i + 1)/\(items.count)..."
-            // 通过 PHAsset 获取原始拍摄时间
-            let shootAt = await fetchCreationDate(for: item)
-            if let movie = try? await item.loadTransferable(type: VideoTransferable.self) {
-                let size = (try? FileManager.default.attributesOfItem(atPath: movie.url.path)[.size] as? Int64) ?? 0
-                files.append((movie.url, movie.url.lastPathComponent, size, shootAt))
+            // 通过 PHAsset 获取原始资产（直接拿原始文件，不重新编码）
+            guard let id = item.itemIdentifier else { continue }
+            let phAsset = await Task.detached {
+                PHAsset.fetchAssets(withLocalIdentifiers: [id], options: nil).firstObject
+            }.value
+            if let phAsset {
+                do {
+                    let exported = try await PhotoLibraryService.exportAsset(phAsset)
+                    files.append((exported.url, exported.filename, exported.size, phAsset.creationDate))
+                } catch {
+                    print("[PandaVault] export failed: \(error)")
+                }
             } else if let data = try? await item.loadTransferable(type: Data.self) {
                 let name = "image_\(UUID().uuidString.prefix(8)).jpg"
                 let tmpURL = FileManager.default.temporaryDirectory.appendingPathComponent(name)
                 try? data.write(to: tmpURL)
-                files.append((tmpURL, name, Int64(data.count), shootAt))
+                files.append((tmpURL, name, Int64(data.count), nil))
             }
         }
 
@@ -209,29 +216,6 @@ struct UploadView: View {
         }
     }
 
-    private func fetchCreationDate(for item: PhotosPickerItem) async -> Date? {
-        guard let id = item.itemIdentifier else { return nil }
-        return await Task.detached {
-            let result = PHAsset.fetchAssets(withLocalIdentifiers: [id], options: nil)
-            return result.firstObject?.creationDate
-        }.value
-    }
-}
-
-// MARK: - Video Transferable
-
-struct VideoTransferable: Transferable {
-    let url: URL
-    static var transferRepresentation: some TransferRepresentation {
-        FileRepresentation(contentType: .movie) { video in
-            SentTransferredFile(video.url)
-        } importing: { received in
-            let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(received.file.lastPathComponent)
-            if FileManager.default.fileExists(atPath: tmp.path) { try FileManager.default.removeItem(at: tmp) }
-            try FileManager.default.copyItem(at: received.file, to: tmp)
-            return Self(url: tmp)
-        }
-    }
 }
 
 // MARK: - Upload Task Row
@@ -426,31 +410,50 @@ struct FolderPickerView: View {
 struct UploadProgressSummary: View {
     @ObservedObject var manager: UploadManager
 
-    private var completed: Int { manager.completedCount }
-    private var failed: Int { manager.failedTasks.count }
-    private var uploading: Int { manager.activeTasks.filter { if case .uploading = $0.status { return true }; return false }.count }
-    private var total: Int { manager.tasks.count }
-    private var overallProgress: Double {
-        guard total > 0 else { return 0 }
-        var sum = 0.0
-        for task in manager.tasks {
+    var body: some View {
+        // TimelineView 每秒刷新，确保进度实时更新
+        TimelineView(.periodic(from: .now, by: 1)) { _ in
+            summaryContent
+        }
+    }
+
+    private var summaryContent: some View {
+        let tasks = manager.tasks
+        let total = tasks.count
+        let completed = tasks.filter {
+            if case .completed = $0.status { return true }
+            if case .duplicated = $0.status { return true }
+            return false
+        }.count
+        let failed = tasks.filter { if case .failed = $0.status { return true }; return false }.count
+        let uploading = tasks.filter { if case .uploading = $0.status { return true }; return false }.count
+
+        var progressSum = 0.0
+        var doneBytes: Int64 = 0
+        let totalBytes = tasks.map(\.fileSize).reduce(0, +)
+        for task in tasks {
             switch task.status {
-            case .completed, .duplicated: sum += 1.0
-            case .uploading(let p): sum += p
+            case .completed, .duplicated:
+                progressSum += 1.0
+                doneBytes += task.fileSize
+            case .uploading(let p):
+                progressSum += p
+                doneBytes += Int64(Double(task.fileSize) * p)
             default: break
             }
         }
-        return sum / Double(total)
-    }
+        let progress = total > 0 ? progressSum / Double(total) : 0
 
-    var body: some View {
-        VStack(spacing: 8) {
-            PixelProgressBar(progress: overallProgress, color: failed > 0 ? PV.orange : PV.cyan)
+        return VStack(spacing: 8) {
+            PixelProgressBar(progress: progress, color: failed > 0 ? PV.orange : PV.cyan)
 
             HStack {
                 Text("\(completed)/\(total)")
                     .font(.system(.caption, design: .monospaced).bold())
                     .foregroundStyle(.primary)
+                Text("\(formatSize(doneBytes))/\(formatSize(totalBytes))")
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(.secondary)
                 if uploading > 0 {
                     PixelTag(text: "\(uploading) UPLOADING", color: PV.cyan)
                 }
@@ -458,11 +461,17 @@ struct UploadProgressSummary: View {
                     PixelTag(text: "\(failed) FAILED", color: PV.pink)
                 }
                 Spacer()
-                Text("\(Int(overallProgress * 100))%")
+                Text("\(Int(progress * 100))%")
                     .font(.system(.caption, design: .monospaced))
                     .foregroundStyle(.tertiary)
             }
         }
+    }
+
+    private func formatSize(_ bytes: Int64) -> String {
+        if bytes < 1024 * 1024 { return "\(bytes / 1024) KB" }
+        if bytes < 1024 * 1024 * 1024 { return String(format: "%.1f MB", Double(bytes) / 1_048_576) }
+        return String(format: "%.2f GB", Double(bytes) / 1_073_741_824)
     }
 }
 

@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use crate::{api::json_err, db::AppState, media};
 
-const DEFAULT_CHUNK_SIZE: i32 = 50 * 1024 * 1024; // 50MB — 局域网大分片
+const DEFAULT_CHUNK_SIZE: i32 = 200 * 1024 * 1024; // 200MB — 局域网大分片，减少 HTTP 往返
 
 // ============ Request / Response ============
 

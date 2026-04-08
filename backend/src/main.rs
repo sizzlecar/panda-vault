@@ -87,6 +87,7 @@ async fn main() -> anyhow::Result<()> {
         pool,
         ai_client,
         volumes: vol_mgr.clone(),
+        ffmpeg_semaphore: std::sync::Arc::new(tokio::sync::Semaphore::new(2)), // 最多 2 个并发 ffmpeg
     };
 
     // 后台 worker：轮询任务队列并转码/提取元数据

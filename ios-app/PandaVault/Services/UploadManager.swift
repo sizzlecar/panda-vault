@@ -8,7 +8,7 @@ final class UploadManager: ObservableObject {
     @Published var isUploading = false
 
     private var api: APIService
-    private let chunkSize = 50 * 1024 * 1024 // 50MB — 局域网大分片
+    private let chunkSize = 200 * 1024 * 1024 // 200MB — 局域网大分片，减少 HTTP 往返
     private let largeFileThreshold: Int64 = 50 * 1024 * 1024 // 50MB: 以上走分片
     // 并发数根据文件大小自适应：大文件少并发（带宽瓶颈），小文件多并发（延迟瓶颈）
     private var maxConcurrent: Int {
