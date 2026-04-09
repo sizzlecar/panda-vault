@@ -104,6 +104,7 @@ final class UploadManager: ObservableObject {
     }
 
     private func uploadOne(_ task: UploadTask) async {
+        PVLog.mem("开始上传: \(task.filename) size=\(task.fileSize)")
         await MainActor.run { task.status = .uploading(progress: 0) }
 
         defer {

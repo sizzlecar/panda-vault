@@ -13,6 +13,7 @@
 		2D597EFA88F78B0C400DB026 /* GalleryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39645935F02BA2D5E9F2790B /* GalleryView.swift */; };
 		2D753E460B8FABFDDECBBA50 /* PandaVaultApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43ADA517816152615440546D /* PandaVaultApp.swift */; };
 		2FC5A9E92C66259B7EAF559B /* Folder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F98DD37E96545FEB0CA7EF9 /* Folder.swift */; };
+		32408437187A0520834D81F1 /* PVLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9688F45A08F04C1871464184 /* PVLogger.swift */; };
 		38A483D483BD4EB9FBA34F9F /* UploadView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38E2D4A05A3D490813EA0954 /* UploadView.swift */; };
 		45E87B7572AD5698160CC7E7 /* BonjourBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E79E82426569E0D010E107D /* BonjourBrowser.swift */; };
 		4EFCFB647111F90AEC32FDEA /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4217984CDFF4D0A6CFA0A72 /* SettingsView.swift */; };
@@ -47,6 +48,7 @@
 		7268F26941B8C7629FD1C7B6 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		78D270CA190879A9F0B046E9 /* UploadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UploadManager.swift; sourceTree = "<group>"; };
 		9310406502855EAD8180F719 /* BackgroundSyncManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundSyncManager.swift; sourceTree = "<group>"; };
+		9688F45A08F04C1871464184 /* PVLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PVLogger.swift; sourceTree = "<group>"; };
 		9C6B01EFFB3248C3DCB738D8 /* DownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadManager.swift; sourceTree = "<group>"; };
 		9E79E82426569E0D010E107D /* BonjourBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BonjourBrowser.swift; sourceTree = "<group>"; };
 		9F98DD37E96545FEB0CA7EF9 /* Folder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Folder.swift; sourceTree = "<group>"; };
@@ -55,7 +57,7 @@
 		C3689C5DEE8DB231B932B5CD /* GalleryViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GalleryViewModel.swift; sourceTree = "<group>"; };
 		C459592961D64B41B4E88FB7 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		C760A2FC8090E91B047AF6B6 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
-		E5144C57BD849EC9B141765E /* PandaVault.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PandaVault.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		E5144C57BD849EC9B141765E /* PandaVault.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = PandaVault.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E9CAAA06C9B5E48B4F4DCB17 /* APIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIService.swift; sourceTree = "<group>"; };
 		EEF197138072CC68AB52D639 /* Asset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Asset.swift; sourceTree = "<group>"; };
 		F4217984CDFF4D0A6CFA0A72 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -87,6 +89,7 @@
 			isa = PBXGroup;
 			children = (
 				50A842737E8F8BBD794483B8 /* FileFingerprint.swift */,
+				9688F45A08F04C1871464184 /* PVLogger.swift */,
 				C760A2FC8090E91B047AF6B6 /* Theme.swift */,
 			);
 			path = Utils;
@@ -238,6 +241,7 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					4E30D767888DB7EA351F5588 = {
+						DevelopmentTeam = "";
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -292,6 +296,7 @@
 				2D597EFA88F78B0C400DB026 /* GalleryView.swift in Sources */,
 				F4EE49C82A5FDEB0661A5626 /* GalleryViewModel.swift in Sources */,
 				EAF45DBC63FE4B86BBC6ECF9 /* HealthResponse.swift in Sources */,
+				32408437187A0520834D81F1 /* PVLogger.swift in Sources */,
 				2D753E460B8FABFDDECBBA50 /* PandaVaultApp.swift in Sources */,
 				9C6680DF6B558F37E8CDD4EF /* PhotoLibraryService.swift in Sources */,
 				4EFCFB647111F90AEC32FDEA /* SettingsView.swift in Sources */,
@@ -311,7 +316,6 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = 47HJ8X7954;
 				INFOPLIST_FILE = PandaVault/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -329,7 +333,6 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = 47HJ8X7954;
 				INFOPLIST_FILE = PandaVault/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

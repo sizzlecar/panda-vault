@@ -40,11 +40,15 @@ struct AssetDetailView: View {
                 // 当前内容
                 Group {
                     if current.isVideo {
-                        FullVideoPlayer(url: api.proxyURL(for: current) ?? api.rawURL(for: current))
+                        let videoURL = api.proxyURL(for: current) ?? api.rawURL(for: current)
+                        FullVideoPlayer(url: videoURL)
                             .id(currentIndex)
+                            .onAppear { PVLog.mem("打开视频: \(current.filename) size=\(current.sizeBytes) url=\(videoURL?.absoluteString ?? "nil")") }
                     } else {
-                        ZoomableImageView(url: api.rawURL(for: current))
+                        let imageURL = api.rawURL(for: current)
+                        ZoomableImageView(url: imageURL)
                             .id(currentIndex)
+                            .onAppear { PVLog.mem("打开图片: \(current.filename) size=\(current.sizeBytes) url=\(imageURL?.absoluteString ?? "nil")") }
                     }
                 }
                 .ignoresSafeArea()

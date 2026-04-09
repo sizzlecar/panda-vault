@@ -92,12 +92,14 @@ final class GalleryViewModel: ObservableObject {
 
         monthsInFlight.insert(month)
         monthLoadingStates[month] = .loading
+        PVLog.mem("加载月份: \(month)")
 
         Task {
             do {
                 let assets = try await api.getAssetsByMonth(month: month)
                 monthlyAssets[month] = assets
                 monthLoadingStates[month] = .loaded
+                PVLog.mem("月份加载完成: \(month) count=\(assets.count)")
             } catch {
                 print("[PandaVault] loadMonth(\(month)) error: \(error)")
                 monthLoadingStates[month] = .failed
