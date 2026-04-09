@@ -16,6 +16,10 @@ struct FolderDetailView: View {
     @State private var showDeleteConfirm = false
     @State private var showRenameAlert = false
     @State private var renameText = ""
+    @State private var showCreateFolder = false
+    @State private var newFolderName = ""
+    @State private var deleteBlockMessage = ""
+    @State private var showDeleteBlocked = false
 
     @State private var searchTask: Task<Void, Never>?
 
@@ -26,53 +30,35 @@ struct FolderDetailView: View {
     private var activeFolder: Folder { currentFolder ?? folder }
 
     var body: some View {
-        VStack(spacing: 0) {
-            // 面包屑（多层时显示）
-            if !breadcrumbs.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 4) {
-                        Button(folder.name) {
-                            breadcrumbs.removeAll()
-                            currentFolder = nil
-                            Task { await navigateToFolder(folder) }
-                        }
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(.secondary)
-
-                        ForEach(Array(breadcrumbs.enumerated()), id: \.offset) { idx, crumb in
-                            Text("/").font(.caption2).foregroundStyle(.tertiary)
-                            Button(crumb.name) {
-                                breadcrumbs = Array(breadcrumbs.prefix(idx + 1))
-                                if let target = breadcrumbs.last {
-                                    Task { await navigateById(target.id) }
-                                }
-                            }
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(idx == breadcrumbs.count - 1 ? PV.cyan : .secondary)
-                        }
+        FolderDetailContent(
+            breadcrumbs: breadcrumbs,
+            rootFolderName: folder.name,
+            subfolders: subfolders,
+            filteredAssets: displayedAssets,
+            isLoading: isLoading,
+            searchText: searchText,
+            api: api,
+            selectedAsset: $selectedAsset,
+            onSubfolderTap: { subfolder in
+                breadcrumbs.append((subfolder.name, subfolder.id))
+                currentFolder = subfolder
+                Task { await navigateToFolder(subfolder) }
+            },
+            onBreadcrumbTap: { index in
+                if index < 0 {
+                    breadcrumbs.removeAll()
+                    currentFolder = nil
+                    Task { await navigateToFolder(folder) }
+                } else {
+                    breadcrumbs = Array(breadcrumbs.prefix(index + 1))
+                    if let target = breadcrumbs.last {
+                        Task { await navigateById(target.id) }
                     }
-                    .padding(.horizontal)
-                    .padding(.vertical, 6)
                 }
-                .background(Color(.secondarySystemGroupedBackground))
             }
-
-            FolderDetailContent(
-                subfolders: subfolders,
-                filteredAssets: displayedAssets,
-                isLoading: isLoading,
-                searchText: searchText,
-                api: api,
-                selectedAsset: $selectedAsset,
-                onSubfolderTap: { subfolder in
-                    breadcrumbs.append((subfolder.name, subfolder.id))
-                    currentFolder = subfolder
-                    Task { await navigateToFolder(subfolder) }
-                }
-            )
-        }
+        )
         .navigationTitle(activeFolder.name)
-        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "在「\(folder.name)」中搜索...")
+        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "在「\(activeFolder.name)」中搜索...")
         .onChange(of: searchText) { _, newValue in
             searchTask?.cancel()
             if newValue.isEmpty {
@@ -88,10 +74,12 @@ struct FolderDetailView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 FolderDetailMenu(
-                    folderName: folder.name,
+                    folderName: activeFolder.name,
                     renameText: $renameText,
                     showRenameAlert: $showRenameAlert,
-                    showDeleteConfirm: $showDeleteConfirm
+                    showDeleteConfirm: $showDeleteConfirm,
+                    showCreateFolder: $showCreateFolder,
+                    newFolderName: $newFolderName
                 )
             }
         }
@@ -101,15 +89,25 @@ struct FolderDetailView: View {
             }
         }
         .confirmationDialog(
-            "删除文件夹「\(folder.name)」？",
+            "删除文件夹「\(activeFolder.name)」？",
             isPresented: $showDeleteConfirm,
             titleVisibility: .visible
         ) {
-            Button("删除", role: .destructive) { Task { await deleteFolder() } }
+            Button("删除", role: .destructive) { Task { await checkAndDeleteFolder() } }
+        }
+        .alert("无法删除", isPresented: $showDeleteBlocked) {
+            Button("好") {}
+        } message: {
+            Text(deleteBlockMessage)
         }
         .alert("重命名文件夹", isPresented: $showRenameAlert) {
             TextField("文件夹名称", text: $renameText)
             Button("确定") { Task { await renameFolder() } }
+            Button("取消", role: .cancel) {}
+        }
+        .alert("新建文件夹", isPresented: $showCreateFolder) {
+            TextField("文件夹名称", text: $newFolderName)
+            Button("创建") { Task { await createSubfolder() } }
             Button("取消", role: .cancel) {}
         }
         .task {
@@ -184,9 +182,19 @@ struct FolderDetailView: View {
         }
     }
 
-    private func deleteFolder() async {
+    private func checkAndDeleteFolder() async {
+        let hasAssets = !assets.isEmpty
+        let hasSubs = !subfolders.isEmpty
+        if hasAssets || hasSubs {
+            var parts: [String] = []
+            if hasSubs { parts.append("\(subfolders.count) 个子文件夹") }
+            if hasAssets { parts.append("\(assets.count) 个文件") }
+            deleteBlockMessage = "「\(activeFolder.name)」内还有 \(parts.joined(separator: " 和 "))，请先清空后再删除"
+            showDeleteBlocked = true
+            return
+        }
         do {
-            try await api.deleteFolder(id: folder.id)
+            try await api.deleteFolder(id: activeFolder.id)
             dismiss()
         } catch {
             print("[PandaVault] Error: \(error)")
@@ -196,9 +204,20 @@ struct FolderDetailView: View {
     private func renameFolder() async {
         guard !renameText.trimmingCharacters(in: .whitespaces).isEmpty else { return }
         do {
-            try await api.renameFolder(id: folder.id, name: renameText)
+            try await api.renameFolder(id: activeFolder.id, name: renameText)
         } catch {
             print("[PandaVault] Error: \(error)")
+        }
+    }
+
+    private func createSubfolder() async {
+        let name = newFolderName.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return }
+        do {
+            let _ = try await api.createFolder(name: name, parentId: activeFolder.id)
+            await loadSubfolders()
+        } catch {
+            print("[PandaVault] Create subfolder error: \(error)")
         }
     }
 }
@@ -206,6 +225,8 @@ struct FolderDetailView: View {
 // MARK: - Content
 
 private struct FolderDetailContent: View {
+    let breadcrumbs: [(name: String, id: UUID)]
+    let rootFolderName: String
     let subfolders: [Folder]
     let filteredAssets: [Asset]
     let isLoading: Bool
@@ -213,6 +234,7 @@ private struct FolderDetailContent: View {
     let api: APIService
     @Binding var selectedAsset: Asset?
     var onSubfolderTap: ((Folder) -> Void)?
+    var onBreadcrumbTap: ((Int) -> Void)?
 
     private let columns = [
         GridItem(.adaptive(minimum: 110, maximum: 200), spacing: 2)
@@ -220,6 +242,31 @@ private struct FolderDetailContent: View {
 
     var body: some View {
         ScrollView {
+            // 面包屑导航
+            if !breadcrumbs.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 4) {
+                        Button(rootFolderName) {
+                            onBreadcrumbTap?(-1)
+                        }
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.secondary)
+
+                        ForEach(Array(breadcrumbs.enumerated()), id: \.offset) { idx, crumb in
+                            Text("/").font(.caption2).foregroundStyle(.tertiary)
+                            Button(crumb.name) {
+                                onBreadcrumbTap?(idx)
+                            }
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(idx == breadcrumbs.count - 1 ? PV.cyan : .secondary)
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.vertical, 6)
+                }
+                .background(Color(.secondarySystemGroupedBackground))
+            }
+
             if !subfolders.isEmpty {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 150, maximum: 200), spacing: 12)], spacing: 12) {
                     ForEach(subfolders) { subfolder in
@@ -296,9 +343,17 @@ private struct FolderDetailMenu: View {
     @Binding var renameText: String
     @Binding var showRenameAlert: Bool
     @Binding var showDeleteConfirm: Bool
+    @Binding var showCreateFolder: Bool
+    @Binding var newFolderName: String
 
     var body: some View {
         Menu {
+            Button {
+                newFolderName = ""
+                showCreateFolder = true
+            } label: {
+                Label("新建文件夹", systemImage: "folder.badge.plus")
+            }
             Button {
                 renameText = folderName
                 showRenameAlert = true

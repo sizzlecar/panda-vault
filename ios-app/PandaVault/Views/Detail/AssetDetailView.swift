@@ -2,12 +2,12 @@ import SwiftUI
 import AVKit
 
 struct AssetDetailView: View {
-    let assets: [Asset]
     let initialAsset: Asset
     let api: APIService
     var onDelete: (() -> Void)?
 
     @Environment(\.dismiss) private var dismiss
+    @State private var assets: [Asset]
     @State private var currentIndex: Int
     @State private var showDeleteConfirm = false
     @State private var showSaveAlert = false
@@ -20,10 +20,10 @@ struct AssetDetailView: View {
     @State private var moveMessage = ""
 
     init(assets: [Asset], initialAsset: Asset, api: APIService, onDelete: (() -> Void)? = nil) {
-        self.assets = assets
         self.initialAsset = initialAsset
         self.api = api
         self.onDelete = onDelete
+        _assets = State(initialValue: assets)
         _currentIndex = State(initialValue: max(0, assets.firstIndex(of: initialAsset) ?? 0))
     }
 
@@ -124,6 +124,14 @@ struct AssetDetailView: View {
                 MoveToFolderView(api: api, asset: asset) { message in
                     moveMessage = message
                     showMoveAlert = true
+                    // 移动后刷新资产数据（file_path 已变更）
+                    Task {
+                        if let updated = try? await api.getAsset(id: asset.id) {
+                            if let idx = assets.firstIndex(where: { $0.id == asset.id }) {
+                                assets[idx] = updated
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -402,7 +410,7 @@ struct MoveToFolderView: View {
 
     var body: some View {
         NavigationStack {
-            MoveFolderLevel(api: api, parentId: nil, pathPrefix: "/", assetIds: assetIds, isMoving: $isMoving) { folder in
+            MoveFolderLevel(api: api, parentId: nil, parentFolder: nil, pathPrefix: "/", assetIds: assetIds, isMoving: $isMoving) { folder in
                 Task { await moveToFolder(folder) }
             }
             .navigationTitle("移动到文件夹")
@@ -437,6 +445,7 @@ struct MoveToFolderView: View {
 private struct MoveFolderLevel: View {
     let api: APIService
     let parentId: UUID?
+    let parentFolder: Folder?
     let pathPrefix: String
     let assetIds: [UUID]
     @Binding var isMoving: Bool
@@ -444,12 +453,13 @@ private struct MoveFolderLevel: View {
 
     @State private var folders: [Folder] = []
     @State private var isLoading = false
+    @State private var drillFolder: Folder?
 
     var body: some View {
         List {
-            if parentId != nil {
+            if let parentFolder {
                 Button {
-                    // 选当前层级需要有个 folder 对象，用父 ID 查
+                    onSelect(parentFolder)
                 } label: {
                     HStack {
                         Image(systemName: "checkmark.circle.fill").foregroundStyle(PV.cyan)
@@ -467,7 +477,6 @@ private struct MoveFolderLevel: View {
 
             ForEach(folders) { folder in
                 HStack {
-                    // 选择这个文件夹
                     Button {
                         onSelect(folder)
                     } label: {
@@ -481,30 +490,34 @@ private struct MoveFolderLevel: View {
                             }
                         }
                     }
+                    .buttonStyle(.borderless)
                     .disabled(isMoving)
 
                     Spacer()
 
-                    // 进入子目录
-                    NavigationLink {
-                        MoveFolderLevel(
-                            api: api,
-                            parentId: folder.id,
-                            pathPrefix: "\(pathPrefix)\(folder.name)/",
-                            assetIds: assetIds,
-                            isMoving: $isMoving,
-                            onSelect: onSelect
-                        )
-                        .navigationTitle(folder.name)
+                    Button {
+                        drillFolder = folder
                     } label: {
                         Image(systemName: "chevron.right")
                             .font(.caption)
                             .foregroundStyle(.tertiary)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.borderless)
                     .frame(width: 30)
                 }
             }
+        }
+        .navigationDestination(item: $drillFolder) { folder in
+            MoveFolderLevel(
+                api: api,
+                parentId: folder.id,
+                parentFolder: folder,
+                pathPrefix: "\(pathPrefix)\(folder.name)/",
+                assetIds: assetIds,
+                isMoving: $isMoving,
+                onSelect: onSelect
+            )
+            .navigationTitle(folder.name)
         }
         .task {
             isLoading = true
