@@ -42,12 +42,12 @@ struct AssetDetailView: View {
                     if current.isVideo {
                         let videoURL = api.proxyURL(for: current) ?? api.rawURL(for: current)
                         FullVideoPlayer(url: videoURL)
-                            .id(currentIndex)
+                            .id("\(currentIndex)_\(current.filePath)")
                             .onAppear { PVLog.mem("打开视频: \(current.filename) size=\(current.sizeBytes) url=\(videoURL?.absoluteString ?? "nil")") }
                     } else {
                         let imageURL = api.rawURL(for: current)
                         ZoomableImageView(url: imageURL)
-                            .id(currentIndex)
+                            .id("\(currentIndex)_\(current.filePath)")
                             .onAppear { PVLog.mem("打开图片: \(current.filename) size=\(current.sizeBytes) url=\(imageURL?.absoluteString ?? "nil")") }
                     }
                 }
