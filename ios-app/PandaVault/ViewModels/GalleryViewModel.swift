@@ -67,18 +67,31 @@ final class GalleryViewModel: ObservableObject {
         monthsInFlight = []
         monthLoadingStates = [:]
         await loadTimeline()
-        // 同步加载前几个月数据，确保 view 有内容可渲染
-        for group in timeline.prefix(3) {
-            let month = group.month
+        // 并行加载前 3 个月，显著降低主线程 hang 时间
+        let firstThree = timeline.prefix(3).map(\.month)
+        for month in firstThree {
             if monthlyAssets[month] == nil {
                 monthLoadingStates[month] = .loading
-                do {
-                    let assets = try await api.getAssetsByMonth(month: month)
-                    monthlyAssets[month] = assets
-                    monthLoadingStates[month] = .loaded
-                } catch {
-                    monthLoadingStates[month] = .failed
+            }
+        }
+        let api = self.api
+        let results: [(String, [Asset]?)] = await withTaskGroup(of: (String, [Asset]?).self) { group in
+            for month in firstThree where monthlyAssets[month] == nil {
+                group.addTask {
+                    let r = try? await api.getAssetsByMonth(month: month)
+                    return (month, r)
                 }
+            }
+            var collected: [(String, [Asset]?)] = []
+            for await item in group { collected.append(item) }
+            return collected
+        }
+        for (month, assets) in results {
+            if let assets {
+                monthlyAssets[month] = assets
+                monthLoadingStates[month] = .loaded
+            } else {
+                monthLoadingStates[month] = .failed
             }
         }
     }

@@ -20,6 +20,7 @@ struct GalleryView: View {
     @State private var isSharing = false
     @State private var shareProgress = ""
     @State private var imageSearchItem: PhotosPickerItem?
+    @State private var isImageSearching = false
 
     init() {
         _vm = StateObject(wrappedValue: GalleryViewModel(api: APIService(baseURL: "")))
@@ -51,7 +52,11 @@ struct GalleryView: View {
                 await vm.loadFolders()
             }
             .fullScreenCover(item: $selectedAsset) { asset in
-                AssetDetailView(assets: vm.allAssetsOrdered, initialAsset: asset, api: appState.api) {
+                // 搜索/图搜图时详情页只在搜索结果里滑；否则用 timeline 全量顺序
+                let source = (!vm.searchText.isEmpty || vm.isImageSearchResult)
+                    ? vm.assets
+                    : vm.allAssetsOrdered
+                AssetDetailView(assets: source, initialAsset: asset, api: appState.api) {
                     Task {
                         await vm.loadTimelineAndAssets()
                     }
@@ -110,20 +115,39 @@ struct GalleryView: View {
                     }
                 }
             }
+            .overlay {
+                if isImageSearching {
+                    ZStack {
+                        Color.black.opacity(0.4).ignoresSafeArea()
+                        VStack(spacing: 12) {
+                            ProgressView().tint(.white).scaleEffect(1.2)
+                            Text("以图搜图中…")
+                                .font(.system(.caption, design: .monospaced).bold())
+                                .foregroundStyle(.white)
+                        }
+                        .padding(24)
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+                        .environment(\.colorScheme, .dark)
+                    }
+                }
+            }
         }
         .onAppear { vm.updateAPI(appState.api) }
         .onChange(of: appState.serverURL) { _, _ in
             vm.updateAPI(appState.api)
             Task {
-                await vm.loadTimelineAndAssets()
-                await vm.loadFolders()
+                async let t: Void = vm.loadTimelineAndAssets()
+                async let f: Void = vm.loadFolders()
+                _ = await (t, f)
             }
         }
         .task {
             guard !appState.serverURL.isEmpty else { return }
             vm.updateAPI(appState.api)
-            await vm.loadTimeline()
-            await vm.loadFolders()
+            // 并行，降低首屏总耗时（主线程 hang 检测器会把串行等待也算进 ms）
+            async let t: Void = vm.loadTimeline()
+            async let f: Void = vm.loadFolders()
+            _ = await (t, f)
         }
     }
 
@@ -167,6 +191,8 @@ struct GalleryView: View {
     private func handleImageSearch(_ item: PhotosPickerItem?) {
         guard let item else { return }
         Task {
+            await MainActor.run { isImageSearching = true }
+            defer { Task { @MainActor in isImageSearching = false } }
             if let data = try? await item.loadTransferable(type: Data.self) {
                 await vm.imageSearch(data: data)
             }
@@ -330,6 +356,29 @@ private struct GalleryTimelineView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // 图搜图结果横幅：带退出按钮
+            if vm.isImageSearchResult {
+                HStack(spacing: 8) {
+                    Image(systemName: "photo.on.rectangle.angled")
+                        .foregroundStyle(PV.cyan)
+                    Text("以图搜图结果 \(vm.assets.count) 张")
+                        .font(.system(.caption, design: .monospaced).bold())
+                        .foregroundStyle(PV.cyan)
+                    Spacer()
+                    Button {
+                        vm.clearImageSearch()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "xmark.circle.fill")
+                            Text("退出").font(.system(.caption, design: .monospaced).bold())
+                        }
+                        .foregroundStyle(PV.cyan)
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 8)
+                .background(PV.cyan.opacity(0.08))
+            }
             // 月份快速跳转栏：年 + 月 两行
             if !vm.timeline.isEmpty && vm.searchText.isEmpty && !vm.isImageSearchResult {
                 VStack(spacing: 4) {
