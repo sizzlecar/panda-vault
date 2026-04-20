@@ -185,13 +185,24 @@ struct UploadView: View {
         selectedItems.removeAll()
         guard !items.isEmpty else { return }
 
+        PVLog.upload("handleSelection[start] 选中 \(items.count) 项，folderId=\(selectedFolderId?.uuidString ?? "nil")")
+        PVLog.disk("导出前磁盘快照")
         isExporting = true
         var files: [(url: URL, filename: String, size: Int64, shootAt: Date?)] = []
+
+        var skippedNoIdentifier = 0
+        var skippedNoPHAsset = 0
+        var exportFailed = 0
+        var fallbackLoadFailed = 0
 
         for (i, item) in items.enumerated() {
             exportProgress = "导出中 \(i + 1)/\(items.count)..."
             // 通过 PHAsset 获取原始资产（直接拿原始文件，不重新编码）
-            guard let id = item.itemIdentifier else { continue }
+            guard let id = item.itemIdentifier else {
+                skippedNoIdentifier += 1
+                PVLog.uploadError("handleSelection[skip-no-id] 第 \(i + 1)/\(items.count) 项没有 itemIdentifier")
+                continue
+            }
             let phAsset = await Task.detached {
                 PHAsset.fetchAssets(withLocalIdentifiers: [id], options: nil).firstObject
             }.value
@@ -199,20 +210,31 @@ struct UploadView: View {
                 do {
                     let exported = try await PhotoLibraryService.exportAsset(phAsset)
                     files.append((exported.url, exported.filename, exported.size, phAsset.creationDate))
+                    PVLog.upload("handleSelection[export-ok] \(i + 1)/\(items.count) name=\(exported.filename) size=\(exported.size.humanReadableBytes)")
                 } catch {
-                    print("[PandaVault] export failed: \(error)")
+                    exportFailed += 1
+                    PVLog.uploadError("handleSelection[export-fail] \(i + 1)/\(items.count) id=\(id) err=\(error.localizedDescription)")
                 }
             } else if let data = try? await item.loadTransferable(type: Data.self) {
                 let name = "image_\(UUID().uuidString.prefix(8)).jpg"
                 let tmpURL = FileManager.default.temporaryDirectory.appendingPathComponent(name)
                 try? data.write(to: tmpURL)
                 files.append((tmpURL, name, Int64(data.count), nil))
+                PVLog.upload("handleSelection[fallback] \(i + 1)/\(items.count) PHAsset 丢失，用 transferable 兜底 size=\(Int64(data.count).humanReadableBytes)")
+            } else {
+                skippedNoPHAsset += 1
+                fallbackLoadFailed += 1
+                PVLog.uploadError("handleSelection[skip-no-data] \(i + 1)/\(items.count) PHAsset 丢失且 transferable 也失败 id=\(id)")
             }
         }
 
         isExporting = false
+        PVLog.upload("handleSelection[done] 输入=\(items.count) 成功导出=\(files.count) 跳过(无id)=\(skippedNoIdentifier) 跳过(无PHAsset+无data)=\(skippedNoPHAsset) 导出失败=\(exportFailed)")
+        PVLog.disk("导出后磁盘快照")
         if !files.isEmpty {
             uploadManager.addFiles(files, folderId: selectedFolderId)
+        } else {
+            PVLog.uploadError("handleSelection: 0 个文件成功导出，不会触发上传")
         }
     }
 

@@ -105,16 +105,24 @@ final class SyncEngine: ObservableObject {
     // MARK: - Public
 
     func performSync() async {
-        guard !isSyncing else { return }
+        guard !isSyncing else {
+            PVLog.sync("performSync: 已在运行，忽略")
+            return
+        }
         isSyncing = true
+        let startedAt = Date()
+        PVLog.sync("performSync[start] folder=\(syncFolderId?.uuidString ?? "default") 已同步=\(syncedIds.count)")
         defer {
             isSyncing = false
             UserDefaults.standard.set(Date(), forKey: "lastSyncDate")
             lastSyncDate = Date()
+            let elapsed = Int(Date().timeIntervalSince(startedAt))
+            PVLog.sync("performSync[end] 耗时=\(elapsed)s 成功=\(syncedCount) 失败=\(failedCount)")
         }
 
         let serverURL = UserDefaults.standard.string(forKey: "serverURL") ?? ""
         guard !serverURL.isEmpty else {
+            PVLog.syncError("performSync: serverURL 为空，跳过")
             lastSyncResult = "未连接服务器"
             return
         }
@@ -152,6 +160,7 @@ final class SyncEngine: ObservableObject {
         totalToSync = toSync.count
         syncedCount = 0
         failedCount = 0
+        PVLog.sync("performSync: 待同步 \(toSync.count) 项")
 
         guard !toSync.isEmpty else {
             lastSyncResult = "已是最新"
@@ -178,6 +187,7 @@ final class SyncEngine: ObservableObject {
     // MARK: - Single Asset Sync
 
     private func syncOne(phAsset: PHAsset, api: APIService, folderId: UUID?) async {
+        let resName = PHAssetResource.assetResources(for: phAsset).first?.originalFilename ?? "?"
         do {
             let exported = try await PhotoLibraryService.exportAsset(phAsset)
             defer { try? FileManager.default.removeItem(at: exported.url) }
@@ -188,6 +198,7 @@ final class SyncEngine: ObservableObject {
                 if result?.exists == true {
                     syncedIds.insert(phAsset.localIdentifier)
                     syncedCount += 1
+                    PVLog.sync("syncOne[duplicate] \(resName) size=\(exported.size.humanReadableBytes)")
                     return
                 }
             }
@@ -199,8 +210,10 @@ final class SyncEngine: ObservableObject {
 
             syncedIds.insert(phAsset.localIdentifier)
             syncedCount += 1
+            PVLog.sync("syncOne[ok] \(resName) size=\(exported.size.humanReadableBytes)")
         } catch {
             failedCount += 1
+            PVLog.syncError("syncOne[fail] \(resName) err=\(error.localizedDescription)")
         }
     }
 

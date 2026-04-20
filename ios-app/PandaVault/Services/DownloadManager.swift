@@ -69,6 +69,7 @@ final class DownloadManager: ObservableObject {
             let task = DownloadTask(asset: asset)
             tasks.append(task)
         }
+        PVLog.download("addAssets: +\(assets.count) → 队列总 \(tasks.count) isActive=\(isActive)")
         if !isActive {
             Task { await processQueue() }
         }
@@ -104,7 +105,11 @@ final class DownloadManager: ObservableObject {
     }
 
     private func downloadOne(_ task: DownloadTask) async {
-        guard let api else { return }
+        guard let api else {
+            PVLog.downloadError("downloadOne: api 未配置 \(task.filename)")
+            return
+        }
+        PVLog.download("downloadOne[start] \(task.filename) isVideo=\(task.isVideo)")
         await MainActor.run { task.status = .downloading(progress: 0) }
 
         do {
@@ -127,8 +132,9 @@ final class DownloadManager: ObservableObject {
                 try await PhotoLibraryService.saveImageToAlbum(fileURL: destURL)
             }
             await MainActor.run { task.status = .completed }
+            PVLog.download("downloadOne[ok] \(task.filename)")
         } catch {
-            print("[PandaVault] Download error: \(error)")
+            PVLog.downloadError("downloadOne[fail] \(task.filename) err=\(error.localizedDescription)")
             await MainActor.run { task.status = .failed(message: error.localizedDescription) }
         }
     }

@@ -59,6 +59,7 @@ enum PhotoLibraryService {
 
             PHImageManager.default().requestAVAsset(forVideo: asset, options: options) { avAsset, _, info in
                 guard let urlAsset = avAsset as? AVURLAsset else {
+                    PVLog.uploadError("exportVideo: avAsset 不是 AVURLAsset，info=\(String(describing: info))")
                     continuation.resume(throwing: PhotoError.exportFailed)
                     return
                 }
@@ -71,8 +72,10 @@ enum PhotoLibraryService {
                 let tmpURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + "_" + filename)
                 do {
                     try FileManager.default.copyItem(at: srcURL, to: tmpURL)
+                    PVLog.upload("exportVideo[ok] \(filename) size=\(size.humanReadableBytes) tmp=\(tmpURL.lastPathComponent)")
                     continuation.resume(returning: (tmpURL, filename, size))
                 } catch {
+                    PVLog.uploadError("exportVideo: 复制到 tmp 失败 \(filename): \(error)")
                     continuation.resume(throwing: error)
                 }
             }
@@ -88,8 +91,9 @@ enum PhotoLibraryService {
             let resources = PHAssetResource.assetResources(for: asset)
             let filename = resources.first?.originalFilename ?? "image.jpg"
 
-            PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) { data, _, _, _ in
+            PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) { data, _, _, info in
                 guard let data else {
+                    PVLog.uploadError("exportImage: 没拿到 data for \(filename), info=\(String(describing: info))")
                     continuation.resume(throwing: PhotoError.exportFailed)
                     return
                 }
@@ -97,8 +101,10 @@ enum PhotoLibraryService {
                 let tmpURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + "_" + filename)
                 do {
                     try data.write(to: tmpURL)
+                    PVLog.upload("exportImage[ok] \(filename) size=\(Int64(data.count).humanReadableBytes) tmp=\(tmpURL.lastPathComponent)")
                     continuation.resume(returning: (tmpURL, filename, Int64(data.count)))
                 } catch {
+                    PVLog.uploadError("exportImage: 写 tmp 失败 \(filename): \(error)")
                     continuation.resume(throwing: error)
                 }
             }

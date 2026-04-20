@@ -7,6 +7,7 @@ final class AppState: ObservableObject {
         didSet {
             UserDefaults.standard.set(serverURL, forKey: "serverURL")
             _api = APIService(baseURL: serverURL)
+            LogReporter.shared.updateServerURL(serverURL)
         }
     }
     @Published var isConnected = false
