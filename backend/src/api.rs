@@ -666,6 +666,8 @@ pub async fn insert_asset_and_job(pool: &PgPool, asset: &media::NewAsset) -> any
 struct SemanticSearchQuery {
     text: String,
     limit: Option<i64>,
+    /// 可选：限定在某个文件夹及其所有子文件夹内搜索
+    folder_id: Option<Uuid>,
 }
 
 #[derive(Serialize)]
@@ -744,9 +746,9 @@ async fn semantic_search(
         Err(e) => return json_err(StatusCode::BAD_GATEWAY, format!("文本向量化失败: {e}")).into_response(),
     };
 
-    // 2. 在数据库中搜索相似向量
+    // 2. 在数据库中搜索相似向量（可选限定到某文件夹子树）
     let limit = query.limit.unwrap_or(20).clamp(1, 100);
-    let search_results = match ai::semantic_search(&state.pool, &embedding, limit).await {
+    let search_results = match ai::semantic_search(&state.pool, &embedding, limit, query.folder_id).await {
         Ok(v) => v,
         Err(e) => return json_err(StatusCode::INTERNAL_SERVER_ERROR, format!("搜索失败: {e}")).into_response(),
     };
@@ -848,7 +850,7 @@ async fn image_search(
     // 搜索相似
     let limit = 20i64;
     let min_similarity = 0.35;
-    let search_results = match ai::semantic_search(&state.pool, &embedding, limit).await {
+    let search_results = match ai::semantic_search(&state.pool, &embedding, limit, None).await {
         Ok(v) => v,
         Err(e) => return json_err(StatusCode::INTERNAL_SERVER_ERROR, format!("搜索失败: {e}")).into_response(),
     };

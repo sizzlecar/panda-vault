@@ -181,10 +181,12 @@ pub struct SemanticSearchResult {
 }
 
 /// 语义搜索：输入文本向量，返回最相似的资产
+/// folder_id = Some 时，只在该文件夹及其所有子文件夹内的资产中搜索
 pub async fn semantic_search(
     pool: &PgPool,
     query_embedding: &[f32],
     limit: i64,
+    folder_id: Option<Uuid>,
 ) -> Result<Vec<SemanticSearchResult>> {
     let vec_str = format!(
         "[{}]",
@@ -215,24 +217,56 @@ pub async fn semantic_search(
     }
 
     // 取每个 asset 所有帧中最大相似度（视频多帧取最佳匹配帧）
-    let rows = sqlx::query_as::<_, (Uuid, f64)>(
-        r#"
-        SELECT sub.asset_id, sub.similarity FROM (
-            SELECT e.asset_id,
-                   MAX(1 - (e.embedding <=> $1::vector)) AS similarity
-            FROM asset_embeddings e
-            JOIN assets a ON a.id = e.asset_id
-            WHERE a.is_deleted = FALSE
-            GROUP BY e.asset_id
-        ) sub
-        ORDER BY sub.similarity DESC
-        LIMIT $2
-        "#,
-    )
-    .bind(&vec_str)
-    .bind(limit)
-    .fetch_all(&mut *tx)
-    .await?;
+    // folder_id 存在时，用 WITH RECURSIVE 把子树 folder ids 收起来，JOIN asset_folders 做过滤
+    let rows: Vec<(Uuid, f64)> = if let Some(fid) = folder_id {
+        sqlx::query_as::<_, (Uuid, f64)>(
+            r#"
+            WITH RECURSIVE subtree(folder_id) AS (
+                SELECT id FROM folders WHERE id = $3 AND is_deleted = FALSE
+                UNION ALL
+                SELECT f.id FROM folders f
+                JOIN subtree s ON f.parent_id = s.folder_id
+                WHERE f.is_deleted = FALSE
+            )
+            SELECT sub.asset_id, sub.similarity FROM (
+                SELECT e.asset_id,
+                       MAX(1 - (e.embedding <=> $1::vector)) AS similarity
+                FROM asset_embeddings e
+                JOIN assets a ON a.id = e.asset_id
+                JOIN asset_folders af ON af.asset_id = e.asset_id
+                WHERE a.is_deleted = FALSE
+                  AND af.folder_id IN (SELECT folder_id FROM subtree)
+                GROUP BY e.asset_id
+            ) sub
+            ORDER BY sub.similarity DESC
+            LIMIT $2
+            "#,
+        )
+        .bind(&vec_str)
+        .bind(limit)
+        .bind(fid)
+        .fetch_all(&mut *tx)
+        .await?
+    } else {
+        sqlx::query_as::<_, (Uuid, f64)>(
+            r#"
+            SELECT sub.asset_id, sub.similarity FROM (
+                SELECT e.asset_id,
+                       MAX(1 - (e.embedding <=> $1::vector)) AS similarity
+                FROM asset_embeddings e
+                JOIN assets a ON a.id = e.asset_id
+                WHERE a.is_deleted = FALSE
+                GROUP BY e.asset_id
+            ) sub
+            ORDER BY sub.similarity DESC
+            LIMIT $2
+            "#,
+        )
+        .bind(&vec_str)
+        .bind(limit)
+        .fetch_all(&mut *tx)
+        .await?
+    };
 
     tx.commit().await?;
 

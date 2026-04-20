@@ -73,11 +73,18 @@ final class APIService: Sendable {
 
     // MARK: - Search
 
-    func semanticSearch(text: String, limit: Int = 20) async throws -> [Asset] {
-        struct SearchRequest: Codable { let text: String; let limit: Int }
+    func semanticSearch(text: String, limit: Int = 20, folderId: UUID? = nil) async throws -> [Asset] {
+        struct SearchRequest: Codable {
+            let text: String
+            let limit: Int
+            let folderId: UUID?
+        }
         struct SearchResult: Decodable { let asset: Asset; let similarity: Double }
         struct SearchResponse: Decodable { let results: [SearchResult] }
-        let resp: SearchResponse = try await post("/api/search/semantic", body: SearchRequest(text: text, limit: limit))
+        let resp: SearchResponse = try await post(
+            "/api/search/semantic",
+            body: SearchRequest(text: text, limit: limit, folderId: folderId)
+        )
         return resp.results.map(\.asset)
     }
 

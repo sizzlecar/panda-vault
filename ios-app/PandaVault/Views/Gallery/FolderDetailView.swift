@@ -288,21 +288,23 @@ struct FolderDetailView: View {
         isLoading = true
         defer { isLoading = false }
 
-        let folderAssetIds = Set(assets.map(\.id))
+        // 后端已支持 folder_id 参数：在当前文件夹 + 所有子文件夹子树内做向量检索
         do {
-            let semanticResults = try await api.semanticSearch(text: query)
-            let filtered = semanticResults.filter { folderAssetIds.contains($0.id) }
-            if !filtered.isEmpty {
-                displayedAssets = filtered
+            let semanticResults = try await api.semanticSearch(text: query, folderId: activeFolder.id)
+            if !semanticResults.isEmpty {
+                displayedAssets = semanticResults
                 return
             }
-        } catch {}
+        } catch {
+            PVLog.error("folder semantic search 失败 folder=\(activeFolder.id) err=\(error.localizedDescription)")
+        }
 
+        // 语义搜索没结果 / AI 服务不可用 → 降级到后端文件名搜索
         do {
             let fileResults = try await api.getFolderAssets(folderId: activeFolder.id, query: query)
             displayedAssets = fileResults
         } catch {
-            print("[PandaVault] Search error: \(error)")
+            PVLog.error("folder filename search 失败 folder=\(activeFolder.id) err=\(error.localizedDescription)")
             displayedAssets = []
         }
     }
