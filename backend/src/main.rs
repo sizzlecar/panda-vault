@@ -1,6 +1,7 @@
 mod ai;
 mod api;
 mod chunked_upload;
+mod client_logs;
 mod config;
 mod db;
 mod folder;
@@ -188,6 +189,23 @@ async fn main() -> anyhow::Result<()> {
                 let _ = sqlx::query("DELETE FROM asset_folders WHERE asset_id = ANY($1)").bind(&ids).execute(&pool_gc).await;
                 let _ = sqlx::query("DELETE FROM assets WHERE id = ANY($1)").bind(&ids).execute(&pool_gc).await;
                 tracing::info!("回收站清理完成");
+            }
+        });
+    }
+
+    // 客户端日志清理：每 6 小时删一次 7 天前的
+    {
+        let pool_cl = app_state.pool.clone();
+        tokio::spawn(async move {
+            // 启动后先等 60 秒，避开冷启高峰
+            tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+            loop {
+                match client_logs::cleanup_expired(&pool_cl).await {
+                    Ok(n) if n > 0 => tracing::info!("客户端日志清理: 删除 {} 条过期记录", n),
+                    Err(e) => tracing::warn!("客户端日志清理失败: {e}"),
+                    _ => {}
+                }
+                tokio::time::sleep(tokio::time::Duration::from_secs(6 * 3600)).await;
             }
         });
     }

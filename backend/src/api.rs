@@ -69,6 +69,8 @@ pub fn routes(state: AppState) -> Router {
         .route("/api/scan", post(start_scan))
         .route("/api/scan/sessions", get(list_scan_sessions_api))
         .route("/api/scan/:id", get(get_scan_session))
+        // 客户端日志上报
+        .route("/api/client-logs", post(crate::client_logs::ingest).get(crate::client_logs::browse))
         .nest_service(
             "/proxies",
             tower_http::services::ServeDir::new(proxies_dir).append_index_html_on_directories(false),
@@ -247,6 +249,16 @@ async fn upload(
     // 去重命中时：只添加文件夹关联（不移动文件），允许同一资产出现在多个文件夹
     if let Some(fid) = folder_id {
         if res.deduped {
+            // 如果之前还没关联到该文件夹，才 +size
+            let already: Option<(i64,)> = sqlx::query_as(
+                "SELECT 1 FROM asset_folders WHERE folder_id = $1 AND asset_id = $2"
+            )
+            .bind(fid)
+            .bind(res.asset.id)
+            .fetch_optional(&state.pool)
+            .await
+            .unwrap_or(None);
+
             let _ = sqlx::query(
                 "INSERT INTO asset_folders (folder_id, asset_id, added_by) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING"
             )
@@ -255,6 +267,12 @@ async fn upload(
             .bind(device_id.as_deref())
             .execute(&state.pool)
             .await;
+
+            if already.is_none() {
+                let _ = crate::folder::adjust_folder_ancestors(
+                    &state.pool, Some(fid), res.asset.size_bytes, 1
+                ).await;
+            }
         }
     }
 
@@ -992,6 +1010,16 @@ async fn delete_asset(
     Path(id): Path<Uuid>,
     Query(query): Query<DeleteAssetQuery>,
 ) -> Response {
+    // 先拿 size 和归属文件夹，以便更新 total_bytes
+    let size_row: Option<(i64,)> = sqlx::query_as(
+        "SELECT size_bytes FROM assets WHERE id = $1 AND is_deleted = FALSE"
+    )
+    .bind(id)
+    .fetch_optional(&state.pool)
+    .await
+    .unwrap_or(None);
+    let folder_ids = crate::folder::folders_of_asset(&state.pool, id).await.unwrap_or_default();
+
     let result = sqlx::query(
         r#"
         UPDATE assets
@@ -1006,6 +1034,11 @@ async fn delete_asset(
 
     match result {
         Ok(r) if r.rows_affected() > 0 => {
+            if let Some((size,)) = size_row {
+                for fid in folder_ids {
+                    let _ = crate::folder::adjust_folder_ancestors(&state.pool, Some(fid), -size, -1).await;
+                }
+            }
             (StatusCode::OK, Json(serde_json::json!({"deleted": true}))).into_response()
         }
         Ok(_) => json_err(StatusCode::NOT_FOUND, "资产不存在").into_response(),
@@ -1027,6 +1060,23 @@ async fn batch_delete_assets(
         return json_err(StatusCode::BAD_REQUEST, "ids 不能为空").into_response();
     }
 
+    // 先拿每个待删资产的 size 和所属 folder，用于更新 total_bytes
+    let pairs: Vec<(Uuid, i64)> = sqlx::query_as(
+        "SELECT a.id, a.size_bytes FROM assets a WHERE a.id = ANY($1) AND a.is_deleted = FALSE"
+    )
+    .bind(&req.ids)
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_default();
+
+    let asset_folders_map: Vec<(Uuid, Uuid)> = sqlx::query_as(
+        "SELECT asset_id, folder_id FROM asset_folders WHERE asset_id = ANY($1)"
+    )
+    .bind(&req.ids)
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_default();
+
     let result = sqlx::query(
         r#"
         UPDATE assets
@@ -1041,6 +1091,14 @@ async fn batch_delete_assets(
 
     match result {
         Ok(r) => {
+            // 扣减每个被删资产在其所属文件夹（含祖先）的 total_bytes
+            use std::collections::HashMap;
+            let size_map: HashMap<Uuid, i64> = pairs.into_iter().collect();
+            for (aid, fid) in asset_folders_map {
+                if let Some(size) = size_map.get(&aid) {
+                    let _ = crate::folder::adjust_folder_ancestors(&state.pool, Some(fid), -*size, -1).await;
+                }
+            }
             (StatusCode::OK, Json(serde_json::json!({
                 "deleted": r.rows_affected(),
                 "requested": req.ids.len()
@@ -1288,12 +1346,36 @@ struct ListFoldersQuery {
     parent_id: Option<Uuid>,
 }
 
+// 兼容：`total_bytes IS NULL` 视为"旧数据尚未算过"，首次访问时异步跑一次全量 recompute
+// 用原子标记去重，避免并发时反复 spawn
+static RECOMPUTE_IN_PROGRESS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 async fn list_folders(
     State(state): State<AppState>,
     Query(query): Query<ListFoldersQuery>,
 ) -> Response {
     match folder::list_folders(&state.pool, query.parent_id).await {
-        Ok(folders) => (StatusCode::OK, Json(folders)).into_response(),
+        Ok(folders) => {
+            // 懒触发：有任一 NULL（bytes 或 count）且当前没有其他 recompute 在跑，就 spawn 一次
+            let has_null = folders.iter().any(|f| f.total_bytes.is_none() || f.asset_count.is_none());
+            if has_null {
+                use std::sync::atomic::Ordering;
+                if RECOMPUTE_IN_PROGRESS
+                    .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+                    .is_ok()
+                {
+                    let pool = state.pool.clone();
+                    tokio::spawn(async move {
+                        match folder::recompute_all_folder_sizes(&pool).await {
+                            Ok(n) => tracing::info!("folder.total_bytes 异步校准: 更新 {} 行", n),
+                            Err(e) => tracing::warn!("folder.total_bytes 校准失败: {e}"),
+                        }
+                        RECOMPUTE_IN_PROGRESS.store(false, Ordering::SeqCst);
+                    });
+                }
+            }
+            (StatusCode::OK, Json(folders)).into_response()
+        }
         Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
 }
@@ -1396,11 +1478,44 @@ async fn remove_asset_from_folder(
 
 // ============ 存储卷管理 ============
 
+#[derive(Serialize)]
+struct VolumeWithUsage {
+    #[serde(flatten)]
+    volume: crate::volume::StorageVolume,
+    /// 该卷下未删除资产的字节数总和（DB 里登记的值，秒级返回）
+    used_by_assets: i64,
+    /// 该卷下未删除资产的数量
+    asset_count: i64,
+}
+
 async fn list_volumes(State(state): State<AppState>) -> Response {
-    match state.volumes.all_volumes().await {
-        Ok(vols) => (StatusCode::OK, Json(vols)).into_response(),
-        Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
-    }
+    let vols = match state.volumes.all_volumes().await {
+        Ok(v) => v,
+        Err(e) => return json_err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    };
+
+    // 一次 query 拿到每个卷的 sum/count，避免 N+1
+    let usage: Vec<(Option<Uuid>, i64, i64)> = sqlx::query_as(
+        "SELECT volume_id, COALESCE(SUM(size_bytes), 0)::BIGINT, COUNT(*)::BIGINT
+         FROM assets
+         WHERE is_deleted = FALSE
+         GROUP BY volume_id"
+    )
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_default();
+
+    let usage_map: std::collections::HashMap<Uuid, (i64, i64)> = usage
+        .into_iter()
+        .filter_map(|(id, bytes, count)| id.map(|i| (i, (bytes, count))))
+        .collect();
+
+    let enriched: Vec<VolumeWithUsage> = vols.into_iter().map(|v| {
+        let (used, count) = usage_map.get(&v.id).cloned().unwrap_or((0, 0));
+        VolumeWithUsage { volume: v, used_by_assets: used, asset_count: count }
+    }).collect();
+
+    (StatusCode::OK, Json(enriched)).into_response()
 }
 
 #[derive(Deserialize)]

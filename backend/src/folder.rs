@@ -43,7 +43,11 @@ pub struct FolderWithCount {
     pub fs_name: Option<String>,
     pub fs_path: Option<String>,
     pub cover_thumb_path: Option<String>,
-    pub asset_count: i64,
+    /// 递归含子文件夹内所有资产的数量（NULL = 尚未计算，同 total_bytes 懒机制）
+    pub asset_count: Option<i64>,
+    /// 文件夹内所有资产字节数总和（递归，含子文件夹）
+    /// NULL 表示尚未计算（会在 list_folders 异步触发 recompute，下次读就有值）
+    pub total_bytes: Option<i64>,
 }
 
 /// 创建文件夹请求
@@ -138,73 +142,137 @@ pub async fn list_folders(
     pool: &PgPool,
     parent_id: Option<Uuid>,
 ) -> anyhow::Result<Vec<FolderWithCount>> {
-    // 单条 SQL：JOIN 获取 asset_count 和封面缩略图
-    // 封面优先使用 cover_asset_id，否则取该文件夹最新添加资产的缩略图
-    let folders = if parent_id.is_some() {
-        sqlx::query_as::<_, FolderWithCount>(
-            r#"
-            SELECT 
-                f.id, f.name, f.description, f.cover_asset_id, f.parent_id, 
-                f.created_by, f.created_at, f.updated_at, 
-                f.fs_name, f.fs_path, 
-                COALESCE(f.cover_thumb_path, cover_asset.thumb_path, latest_asset.thumb_path) as cover_thumb_path,
-                COALESCE(cnt.asset_count, 0) as asset_count
-            FROM folders f
-            LEFT JOIN (
-                SELECT folder_id, COUNT(*) as asset_count 
-                FROM asset_folders 
-                GROUP BY folder_id
-            ) cnt ON cnt.folder_id = f.id
-            LEFT JOIN assets cover_asset ON cover_asset.id = f.cover_asset_id
-            LEFT JOIN LATERAL (
-                SELECT a.thumb_path
-                FROM asset_folders af
-                JOIN assets a ON a.id = af.asset_id
-                WHERE af.folder_id = f.id AND a.is_deleted = FALSE
-                ORDER BY af.added_at DESC
-                LIMIT 1
-            ) latest_asset ON true
-            WHERE f.parent_id = $1 AND f.is_deleted = FALSE
-            ORDER BY f.name ASC
-            "#,
-        )
-        .bind(parent_id)
-        .fetch_all(pool)
-        .await?
+    // 单条 SQL：直接读取 folders.total_bytes 和 total_asset_count（写路径维护 + 懒重算）
+    // asset_count/total_bytes 都是递归含子文件夹
+    let query = r#"
+        SELECT
+            f.id, f.name, f.description, f.cover_asset_id, f.parent_id,
+            f.created_by, f.created_at, f.updated_at,
+            f.fs_name, f.fs_path,
+            COALESCE(f.cover_thumb_path, cover_asset.thumb_path, latest_asset.thumb_path) as cover_thumb_path,
+            f.total_asset_count as asset_count,
+            f.total_bytes
+        FROM folders f
+        LEFT JOIN assets cover_asset ON cover_asset.id = f.cover_asset_id
+        LEFT JOIN LATERAL (
+            SELECT a.thumb_path
+            FROM asset_folders af
+            JOIN assets a ON a.id = af.asset_id
+            WHERE af.folder_id = f.id AND a.is_deleted = FALSE
+            ORDER BY af.added_at DESC
+            LIMIT 1
+        ) latest_asset ON true
+        WHERE f.is_deleted = FALSE
+    "#;
+
+    let folders = if let Some(pid) = parent_id {
+        sqlx::query_as::<_, FolderWithCount>(&format!("{query} AND f.parent_id = $1 ORDER BY f.name ASC"))
+            .bind(pid)
+            .fetch_all(pool)
+            .await?
     } else {
-        // parent_id 为 None 时，获取根文件夹
-        sqlx::query_as::<_, FolderWithCount>(
-            r#"
-            SELECT 
-                f.id, f.name, f.description, f.cover_asset_id, f.parent_id, 
-                f.created_by, f.created_at, f.updated_at, 
-                f.fs_name, f.fs_path, 
-                COALESCE(f.cover_thumb_path, cover_asset.thumb_path, latest_asset.thumb_path) as cover_thumb_path,
-                COALESCE(cnt.asset_count, 0) as asset_count
-            FROM folders f
-            LEFT JOIN (
-                SELECT folder_id, COUNT(*) as asset_count 
-                FROM asset_folders 
-                GROUP BY folder_id
-            ) cnt ON cnt.folder_id = f.id
-            LEFT JOIN assets cover_asset ON cover_asset.id = f.cover_asset_id
-            LEFT JOIN LATERAL (
-                SELECT a.thumb_path
-                FROM asset_folders af
-                JOIN assets a ON a.id = af.asset_id
-                WHERE af.folder_id = f.id AND a.is_deleted = FALSE
-                ORDER BY af.added_at DESC
-                LIMIT 1
-            ) latest_asset ON true
-            WHERE f.parent_id IS NULL AND f.is_deleted = FALSE
-            ORDER BY f.name ASC
-            "#,
-        )
-        .fetch_all(pool)
-        .await?
+        sqlx::query_as::<_, FolderWithCount>(&format!("{query} AND f.parent_id IS NULL ORDER BY f.name ASC"))
+            .fetch_all(pool)
+            .await?
     };
 
     Ok(folders)
+}
+
+/// 写路径通用 helper：把 delta_bytes / delta_count 加到 folder_id 及所有祖先
+/// delta 可正可负；folder_id=None 或两个 delta 都为 0 直接 no-op
+/// NULL 值（尚未计算）会先 COALESCE 为 0 再加 delta —— 可能临时不准，等异步 recompute 校正
+pub async fn adjust_folder_ancestors(
+    pool: &PgPool,
+    folder_id: Option<Uuid>,
+    delta_bytes: i64,
+    delta_count: i64,
+) -> anyhow::Result<()> {
+    let fid = match folder_id {
+        Some(id) => id,
+        None => return Ok(()),
+    };
+    if delta_bytes == 0 && delta_count == 0 { return Ok(()); }
+    sqlx::query(
+        r#"
+        WITH RECURSIVE ancestors AS (
+            SELECT id, parent_id FROM folders WHERE id = $1
+            UNION ALL
+            SELECT f.id, f.parent_id FROM folders f
+            JOIN ancestors a ON f.id = a.parent_id
+            WHERE f.is_deleted = FALSE
+        )
+        UPDATE folders SET
+            total_bytes       = GREATEST(0, COALESCE(total_bytes, 0)       + $2),
+            total_asset_count = GREATEST(0, COALESCE(total_asset_count, 0) + $3)
+        WHERE id IN (SELECT id FROM ancestors)
+        "#,
+    )
+    .bind(fid)
+    .bind(delta_bytes)
+    .bind(delta_count)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// 只调 bytes 的 helper（兼容），转发到新的两列 helper
+pub async fn adjust_folder_ancestors_size(
+    pool: &PgPool,
+    folder_id: Option<Uuid>,
+    delta: i64,
+) -> anyhow::Result<()> {
+    adjust_folder_ancestors(pool, folder_id, delta, 0).await
+}
+
+/// 查询一个 asset 当前关联的所有 folder ids（给 delete/restore 遍历用）
+pub async fn folders_of_asset(pool: &PgPool, asset_id: Uuid) -> anyhow::Result<Vec<Uuid>> {
+    let rows: Vec<(Uuid,)> = sqlx::query_as(
+        "SELECT folder_id FROM asset_folders WHERE asset_id = $1",
+    )
+    .bind(asset_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(|r| r.0).collect())
+}
+
+/// 全量重算 folders.total_bytes / total_asset_count（含子文件夹递归）
+/// 由 list_folders 检测到任意 NULL 值时异步触发；亦可手动调用作为校准
+pub async fn recompute_all_folder_sizes(pool: &PgPool) -> anyhow::Result<u64> {
+    let r = sqlx::query(
+        r#"
+        WITH RECURSIVE folder_closure AS (
+            SELECT id AS root_id, id AS descendant_id
+            FROM folders WHERE is_deleted = FALSE
+            UNION ALL
+            SELECT fc.root_id, f.id
+            FROM folder_closure fc
+            JOIN folders f ON f.parent_id = fc.descendant_id
+            WHERE f.is_deleted = FALSE
+        ),
+        folder_stats AS (
+            SELECT fc.root_id AS folder_id,
+                   COALESCE(SUM(a.size_bytes), 0)::BIGINT AS total_bytes,
+                   COUNT(a.id)::BIGINT AS total_count
+            FROM folder_closure fc
+            LEFT JOIN asset_folders af ON af.folder_id = fc.descendant_id
+            LEFT JOIN assets a ON a.id = af.asset_id AND a.is_deleted = FALSE
+            GROUP BY fc.root_id
+        )
+        UPDATE folders SET
+            total_bytes       = COALESCE(fs.total_bytes, 0),
+            total_asset_count = COALESCE(fs.total_count, 0)
+        FROM folder_stats fs
+        WHERE folders.id = fs.folder_id
+          AND (folders.total_bytes IS NULL
+               OR folders.total_asset_count IS NULL
+               OR folders.total_bytes       <> COALESCE(fs.total_bytes, 0)
+               OR folders.total_asset_count <> COALESCE(fs.total_count, 0))
+        "#,
+    )
+    .execute(pool)
+    .await?;
+    Ok(r.rows_affected())
 }
 
 /// 更新文件夹
@@ -309,11 +377,16 @@ pub async fn add_asset_to_folder(
         .await?;
     
     // 7. 更新 asset_folders（单归属：先删除旧关联，再插入新关联）
+    //    更新前先查 asset 字节数和旧归属文件夹，以便更新 total_bytes
+    let (size_bytes,): (i64,) = sqlx::query_as("SELECT size_bytes FROM assets WHERE id = $1")
+        .bind(asset_id).fetch_one(pool).await?;
+    let old_folder_ids = folders_of_asset(pool, asset_id).await?;
+
     sqlx::query("DELETE FROM asset_folders WHERE asset_id = $1")
         .bind(asset_id)
         .execute(pool)
         .await?;
-    
+
     sqlx::query(
         r#"
         INSERT INTO asset_folders (folder_id, asset_id, added_by)
@@ -325,6 +398,12 @@ pub async fn add_asset_to_folder(
     .bind(device_id)
     .execute(pool)
     .await?;
+
+    // 8. 更新 total_bytes / total_asset_count：从旧祖先树减、在新祖先树加
+    for old_fid in old_folder_ids {
+        let _ = adjust_folder_ancestors(pool, Some(old_fid), -size_bytes, -1).await;
+    }
+    let _ = adjust_folder_ancestors(pool, Some(folder_id), size_bytes, 1).await;
 
     Ok(())
 }
@@ -383,7 +462,10 @@ pub async fn remove_asset_from_folder(
         .execute(pool)
         .await?;
     
-    // 6. 删除 asset_folders 关联
+    // 6. 删除 asset_folders 关联前先拿 size
+    let (size_bytes,): (i64,) = sqlx::query_as("SELECT size_bytes FROM assets WHERE id = $1")
+        .bind(asset_id).fetch_one(pool).await?;
+
     sqlx::query(
         r#"
         DELETE FROM asset_folders
@@ -394,6 +476,9 @@ pub async fn remove_asset_from_folder(
     .bind(asset_id)
     .execute(pool)
     .await?;
+
+    // 7. 从该文件夹及其所有祖先的 total_bytes / total_asset_count 减掉
+    let _ = adjust_folder_ancestors(pool, Some(folder_id), -size_bytes, -1).await;
 
     Ok(())
 }

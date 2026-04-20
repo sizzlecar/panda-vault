@@ -252,6 +252,8 @@ pub async fn ingest_upload_bytes(
             .bind(device_id)
             .execute(&state.pool)
             .await?;
+            // 同步更新 folder.total_bytes / total_asset_count（及所有祖先）
+            let _ = crate::folder::adjust_folder_ancestors(&state.pool, Some(fid), size as i64, 1).await;
         }
     }
 
