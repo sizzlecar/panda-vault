@@ -130,7 +130,7 @@ struct SettingsView: View {
                     statRow(label: "上次同步", value: lastSyncText, color: PV.pink)
                 }
 
-                // MARK: - Trash
+                // MARK: - Storage Management
                 Section {
                     NavigationLink {
                         TrashView(api: appState.api)
@@ -142,6 +142,11 @@ struct SettingsView: View {
                                 .font(.system(.caption, design: .monospaced))
                                 .foregroundStyle(.secondary)
                         }
+                    }
+                    NavigationLink {
+                        DiskInfoView(api: appState.api)
+                    } label: {
+                        Label("磁盘信息", systemImage: "internaldrive")
                     }
                 } header: {
                     PixelSectionHeader(title: "存储管理")

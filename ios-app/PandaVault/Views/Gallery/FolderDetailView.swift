@@ -1,11 +1,38 @@
 import SwiftUI
 
+// MARK: - Asset Sort
+
+enum AssetSortOption: String, CaseIterable, Identifiable {
+    case timeDesc = "最新 ↓"
+    case timeAsc = "最早 ↑"
+    case sizeDesc = "大小 ↓"
+    case sizeAsc = "大小 ↑"
+    case nameAsc = "名称 ↑"
+    case nameDesc = "名称 ↓"
+    var id: String { rawValue }
+}
+
+extension Array where Element == Asset {
+    func sorted(by option: AssetSortOption) -> [Asset] {
+        func effectiveDate(_ a: Asset) -> Date { a.shootAt ?? a.createdAt }
+        switch option {
+        case .timeDesc: return sorted { effectiveDate($0) > effectiveDate($1) }
+        case .timeAsc:  return sorted { effectiveDate($0) < effectiveDate($1) }
+        case .sizeDesc: return sorted { $0.sizeBytes > $1.sizeBytes }
+        case .sizeAsc:  return sorted { $0.sizeBytes < $1.sizeBytes }
+        case .nameAsc:  return sorted { $0.filename.localizedStandardCompare($1.filename) == .orderedAscending }
+        case .nameDesc: return sorted { $0.filename.localizedStandardCompare($1.filename) == .orderedDescending }
+        }
+    }
+}
+
 // MARK: - FolderDetailView
 
 struct FolderDetailView: View {
     let folder: Folder
     let api: APIService
 
+    @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) private var dismiss
     @State private var assets: [Asset] = []
     @State private var subfolders: [Folder] = []
@@ -21,7 +48,23 @@ struct FolderDetailView: View {
     @State private var deleteBlockMessage = ""
     @State private var showDeleteBlocked = false
 
+    // 批量选择
+    @State private var isSelecting = false
+    @State private var selectedIds: Set<UUID> = []
+    @State private var showBatchDeleteConfirm = false
+    @State private var showBatchMove = false
+    @State private var showMoveAlert = false
+    @State private var moveMessage = ""
+    @State private var shareItems: [Any] = []
+    @State private var showShareSheet = false
+    @State private var isSharing = false
+    @State private var shareProgress = ""
+
     @State private var searchTask: Task<Void, Never>?
+
+    // 排序
+    @State private var subfolderSort: FolderSortOption = .nameAsc
+    @State private var assetSort: AssetSortOption = .timeDesc
 
     // 面包屑导航
     @State private var breadcrumbs: [(name: String, id: UUID)] = []
@@ -33,12 +76,16 @@ struct FolderDetailView: View {
         FolderDetailContent(
             breadcrumbs: breadcrumbs,
             rootFolderName: folder.name,
-            subfolders: subfolders,
-            filteredAssets: displayedAssets,
+            subfolders: subfolders.sorted(by: subfolderSort),
+            filteredAssets: displayedAssets.sorted(by: assetSort),
             isLoading: isLoading,
             searchText: searchText,
             api: api,
             selectedAsset: $selectedAsset,
+            isSelecting: $isSelecting,
+            selectedIds: $selectedIds,
+            subfolderSort: $subfolderSort,
+            assetSort: $assetSort,
             onSubfolderTap: { subfolder in
                 breadcrumbs.append((subfolder.name, subfolder.id))
                 currentFolder = subfolder
@@ -73,19 +120,97 @@ struct FolderDetailView: View {
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                FolderDetailMenu(
-                    folderName: activeFolder.name,
-                    renameText: $renameText,
-                    showRenameAlert: $showRenameAlert,
-                    showDeleteConfirm: $showDeleteConfirm,
-                    showCreateFolder: $showCreateFolder,
-                    newFolderName: $newFolderName
-                )
+                HStack(spacing: 12) {
+                    if isSelecting {
+                        Button {
+                            let allIds = Set(displayedAssets.map(\.id))
+                            if selectedIds == allIds {
+                                selectedIds.removeAll()
+                            } else {
+                                selectedIds = allIds
+                            }
+                        } label: {
+                            Text(selectedIds.count == displayedAssets.count && !displayedAssets.isEmpty ? "取消全选" : "全选")
+                                .foregroundStyle(PV.cyan)
+                        }
+                        Button {
+                            isSelecting = false
+                            selectedIds.removeAll()
+                        } label: {
+                            Text("完成").foregroundStyle(PV.cyan)
+                        }
+                    } else {
+                        Button {
+                            isSelecting = true
+                        } label: {
+                            Text("选择").foregroundStyle(PV.cyan)
+                        }
+                        FolderDetailMenu(
+                            folderName: activeFolder.name,
+                            renameText: $renameText,
+                            showRenameAlert: $showRenameAlert,
+                            showDeleteConfirm: $showDeleteConfirm,
+                            showCreateFolder: $showCreateFolder,
+                            newFolderName: $newFolderName
+                        )
+                    }
+                }
             }
         }
         .fullScreenCover(item: $selectedAsset) { asset in
             AssetDetailView(assets: displayedAssets, initialAsset: asset, api: api) {
                 Task { await loadFolderAssets() }
+            }
+        }
+        .safeAreaInset(edge: .bottom) {
+            GalleryBottomInset(
+                appState: appState,
+                isSelecting: isSelecting,
+                selectedIds: selectedIds,
+                showDeleteConfirm: $showBatchDeleteConfirm,
+                showBatchMove: $showBatchMove,
+                onSave: { batchSaveToPhotos() },
+                onShare: { Task { await batchShare() } }
+            )
+        }
+        .confirmationDialog(
+            "确定删除 \(selectedIds.count) 个素材？",
+            isPresented: $showBatchDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("删除", role: .destructive) { Task { await batchDelete() } }
+        }
+        .sheet(isPresented: $showBatchMove) {
+            MoveToFolderView(api: api, assetIds: Array(selectedIds)) { msg in
+                moveMessage = msg
+                showMoveAlert = true
+                selectedIds.removeAll()
+                isSelecting = false
+                Task { await loadFolderAssets() }
+            }
+        }
+        .alert("", isPresented: $showMoveAlert) {
+            Button("好") {}
+        } message: {
+            Text(moveMessage)
+        }
+        .sheet(isPresented: $showShareSheet, onDismiss: cleanupShareFiles) {
+            ActivityView(items: shareItems)
+        }
+        .overlay {
+            if isSharing {
+                ZStack {
+                    Color.black.opacity(0.4).ignoresSafeArea()
+                    VStack(spacing: 12) {
+                        ProgressView().tint(.white).scaleEffect(1.2)
+                        Text(shareProgress)
+                            .font(.system(.caption, design: .monospaced).bold())
+                            .foregroundStyle(.white)
+                    }
+                    .padding(24)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+                    .environment(\.colorScheme, .dark)
+                }
             }
         }
         .confirmationDialog(
@@ -220,6 +345,62 @@ struct FolderDetailView: View {
             print("[PandaVault] Create subfolder error: \(error)")
         }
     }
+
+    // MARK: - Batch Actions
+
+    private func batchSaveToPhotos() {
+        let selected = displayedAssets.filter { selectedIds.contains($0.id) }
+        appState.downloadManager.updateAPI(api)
+        appState.downloadManager.addAssets(selected)
+        selectedIds.removeAll()
+        isSelecting = false
+    }
+
+    private func batchDelete() async {
+        for id in selectedIds {
+            try? await api.deleteAsset(id: id)
+        }
+        selectedIds.removeAll()
+        isSelecting = false
+        await loadFolderAssets()
+    }
+
+    private func cleanupShareFiles() {
+        for item in shareItems {
+            if let url = item as? URL {
+                try? FileManager.default.removeItem(at: url)
+            }
+        }
+        shareItems = []
+    }
+
+    private func batchShare() async {
+        let selected = displayedAssets.filter { selectedIds.contains($0.id) }
+        isSharing = true
+        defer { isSharing = false }
+
+        var localFiles: [Any] = []
+        for (i, asset) in selected.enumerated() {
+            shareProgress = "下载中 \(i + 1)/\(selected.count)..."
+            do {
+                let tempURL = try await api.downloadAsset(id: asset.id) { _ in }
+                let ext = (asset.filename as NSString).pathExtension
+                let dest = FileManager.default.temporaryDirectory
+                    .appendingPathComponent(UUID().uuidString)
+                    .appendingPathExtension(ext.isEmpty ? "bin" : ext)
+                try FileManager.default.moveItem(at: tempURL, to: dest)
+                localFiles.append(dest)
+            } catch {
+                print("[PandaVault] Download for share failed: \(error)")
+            }
+        }
+        if !localFiles.isEmpty {
+            shareItems = localFiles
+            showShareSheet = true
+        }
+        selectedIds.removeAll()
+        isSelecting = false
+    }
 }
 
 // MARK: - Content
@@ -233,12 +414,12 @@ private struct FolderDetailContent: View {
     let searchText: String
     let api: APIService
     @Binding var selectedAsset: Asset?
+    @Binding var isSelecting: Bool
+    @Binding var selectedIds: Set<UUID>
+    @Binding var subfolderSort: FolderSortOption
+    @Binding var assetSort: AssetSortOption
     var onSubfolderTap: ((Folder) -> Void)?
     var onBreadcrumbTap: ((Int) -> Void)?
-
-    private let columns = [
-        GridItem(.adaptive(minimum: 110, maximum: 200), spacing: 2)
-    ]
 
     var body: some View {
         ScrollView {
@@ -267,6 +448,11 @@ private struct FolderDetailContent: View {
                 .background(Color(.secondarySystemGroupedBackground))
             }
 
+            // 排序条（非搜索态才显示）
+            if searchText.isEmpty {
+                sortBar
+            }
+
             if !subfolders.isEmpty {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 150, maximum: 200), spacing: 12)], spacing: 12) {
                     ForEach(subfolders) { subfolder in
@@ -281,9 +467,20 @@ private struct FolderDetailContent: View {
                                     .font(.system(.caption, design: .monospaced))
                                     .lineLimit(1)
                                     .foregroundStyle(.primary)
-                                Text("\(subfolder.assetCount ?? 0)")
-                                    .font(.system(.caption2, design: .monospaced))
-                                    .foregroundStyle(.secondary)
+                                if subfolder.assetCount == nil || subfolder.totalBytes == nil {
+                                    Text("计算中…")
+                                        .font(.system(.caption2, design: .monospaced))
+                                        .foregroundStyle(.tertiary)
+                                } else {
+                                    Text("\(subfolder.assetCount ?? 0) items")
+                                        .font(.system(.caption2, design: .monospaced))
+                                        .foregroundStyle(.secondary)
+                                    if let total = subfolder.totalBytes, total > 0 {
+                                        Text(total.humanReadableBytes)
+                                            .font(.system(.caption2, design: .monospaced))
+                                            .foregroundStyle(.tertiary)
+                                    }
+                                }
                             }
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 12)
@@ -299,7 +496,13 @@ private struct FolderDetailContent: View {
             if filteredAssets.isEmpty && subfolders.isEmpty && !isLoading {
                 FolderDetailEmptyState(hasSearch: !searchText.isEmpty)
             } else if !filteredAssets.isEmpty {
-                assetsGrid
+                GalleryAssetsGrid(
+                    assets: filteredAssets,
+                    api: api,
+                    isSelecting: $isSelecting,
+                    selectedIds: $selectedIds,
+                    selectedAsset: $selectedAsset
+                )
             }
             if isLoading {
                 ProgressView().tint(PV.cyan).padding()
@@ -307,16 +510,58 @@ private struct FolderDetailContent: View {
         }
     }
 
-    private var assetsGrid: some View {
-        LazyVGrid(columns: columns, spacing: 2) {
-            ForEach(filteredAssets) { asset in
-                Button { selectedAsset = asset } label: {
-                    AssetThumbnail(asset: asset, api: api)
+    // 排序条：子文件夹 + 资产各一个 Menu
+    private var sortBar: some View {
+        HStack(spacing: 8) {
+            if !subfolders.isEmpty {
+                Menu {
+                    ForEach(FolderSortOption.allCases) { opt in
+                        Button {
+                            subfolderSort = opt
+                        } label: {
+                            if opt == subfolderSort {
+                                Label(opt.rawValue, systemImage: "checkmark")
+                            } else {
+                                Text(opt.rawValue)
+                            }
+                        }
+                    }
+                } label: {
+                    sortChip(icon: "folder", text: "文件夹 \(subfolderSort.rawValue)")
                 }
-                .buttonStyle(.plain)
             }
+            if !filteredAssets.isEmpty {
+                Menu {
+                    ForEach(AssetSortOption.allCases) { opt in
+                        Button {
+                            assetSort = opt
+                        } label: {
+                            if opt == assetSort {
+                                Label(opt.rawValue, systemImage: "checkmark")
+                            } else {
+                                Text(opt.rawValue)
+                            }
+                        }
+                    }
+                } label: {
+                    sortChip(icon: "photo.on.rectangle", text: "照片 \(assetSort.rawValue)")
+                }
+            }
+            Spacer()
         }
-        .padding(.horizontal, 2)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+    }
+
+    private func sortChip(icon: String, text: String) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon)
+            Text(text).font(.system(.caption2, design: .monospaced).bold())
+        }
+        .foregroundStyle(PV.cyan)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(PV.cyan.opacity(0.08), in: Capsule())
     }
 }
 

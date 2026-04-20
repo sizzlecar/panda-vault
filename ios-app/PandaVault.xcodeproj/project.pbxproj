@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		06E3DF727A4E375D1D83D7AD /* UploadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78D270CA190879A9F0B046E9 /* UploadManager.swift */; };
+		137756ADF508F404D6CEEA76 /* VolumeInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01490E9C35F80C6774970D7C /* VolumeInfo.swift */; };
 		177D518F0E33FBA66032D978 /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9CAAA06C9B5E48B4F4DCB17 /* APIService.swift */; };
 		21FBDC0465DF9125E176A9BA /* FileFingerprint.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50A842737E8F8BBD794483B8 /* FileFingerprint.swift */; };
 		2D597EFA88F78B0C400DB026 /* GalleryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39645935F02BA2D5E9F2790B /* GalleryView.swift */; };
@@ -22,10 +23,13 @@
 		7E035FA7E73B8F8FA1B72257 /* Asset.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEF197138072CC68AB52D639 /* Asset.swift */; };
 		86FE31542656B2560FCB0213 /* FolderDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53E83E013626C8067B67210B /* FolderDetailView.swift */; };
 		8AF065E533656AA24E50B9EC /* TrashView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35ACFB5F30D43BE68B670098 /* TrashView.swift */; };
+		912A679145B32D89C3CD4967 /* DiskInfoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11C0C95C1FC10497D1F6C144 /* DiskInfoView.swift */; };
 		9C6680DF6B558F37E8CDD4EF /* PhotoLibraryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF8939B2D186E19667C038A5 /* PhotoLibraryService.swift */; };
 		A28912987517E846D89C5F74 /* AssetThumbnail.swift in Sources */ = {isa = PBXBuildFile; fileRef = A42D159C80C138B6EFFA6BF2 /* AssetThumbnail.swift */; };
+		AC0F991661E2C9D90F9E8258 /* LogReporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7CE284746159FD8561B44C5 /* LogReporter.swift */; };
 		AF484C3ABADB27FDE4F50ECE /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7268F26941B8C7629FD1C7B6 /* AppState.swift */; };
 		B6717616DE470F5F9A3B8A13 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C459592961D64B41B4E88FB7 /* Assets.xcassets */; };
+		CA2B1613B56033AED93860B7 /* DiskDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 373C586027E85DB96BEA6D48 /* DiskDiagnostics.swift */; };
 		D67629AB46D471F59BA541A8 /* AssetDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39DB5E911B42D7BADDC91F51 /* AssetDetailView.swift */; };
 		D83B1F2997435CC77724655C /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40A5487E62E77F2C531BEF4B /* ContentView.swift */; };
 		E43B79D203D9277EDB78E1EF /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = C760A2FC8090E91B047AF6B6 /* Theme.swift */; };
@@ -35,9 +39,12 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		01490E9C35F80C6774970D7C /* VolumeInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolumeInfo.swift; sourceTree = "<group>"; };
 		04090C10A72F3B3C12246590 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		11C0C95C1FC10497D1F6C144 /* DiskInfoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskInfoView.swift; sourceTree = "<group>"; };
 		292E0667F303386093116697 /* HealthResponse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthResponse.swift; sourceTree = "<group>"; };
 		35ACFB5F30D43BE68B670098 /* TrashView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrashView.swift; sourceTree = "<group>"; };
+		373C586027E85DB96BEA6D48 /* DiskDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskDiagnostics.swift; sourceTree = "<group>"; };
 		38E2D4A05A3D490813EA0954 /* UploadView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UploadView.swift; sourceTree = "<group>"; };
 		39645935F02BA2D5E9F2790B /* GalleryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GalleryView.swift; sourceTree = "<group>"; };
 		39DB5E911B42D7BADDC91F51 /* AssetDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssetDetailView.swift; sourceTree = "<group>"; };
@@ -58,6 +65,7 @@
 		C459592961D64B41B4E88FB7 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		C760A2FC8090E91B047AF6B6 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		E5144C57BD849EC9B141765E /* PandaVault.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PandaVault.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		E7CE284746159FD8561B44C5 /* LogReporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogReporter.swift; sourceTree = "<group>"; };
 		E9CAAA06C9B5E48B4F4DCB17 /* APIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIService.swift; sourceTree = "<group>"; };
 		EEF197138072CC68AB52D639 /* Asset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Asset.swift; sourceTree = "<group>"; };
 		F4217984CDFF4D0A6CFA0A72 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -72,6 +80,7 @@
 				9F98DD37E96545FEB0CA7EF9 /* Folder.swift */,
 				292E0667F303386093116697 /* HealthResponse.swift */,
 				F5B3AEEC77D97014B69E14E8 /* UploadSession.swift */,
+				01490E9C35F80C6774970D7C /* VolumeInfo.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -88,6 +97,7 @@
 		3B5ED999742E7E63EA5134B0 /* Utils */ = {
 			isa = PBXGroup;
 			children = (
+				373C586027E85DB96BEA6D48 /* DiskDiagnostics.swift */,
 				50A842737E8F8BBD794483B8 /* FileFingerprint.swift */,
 				9688F45A08F04C1871464184 /* PVLogger.swift */,
 				C760A2FC8090E91B047AF6B6 /* Theme.swift */,
@@ -187,6 +197,7 @@
 				9310406502855EAD8180F719 /* BackgroundSyncManager.swift */,
 				9E79E82426569E0D010E107D /* BonjourBrowser.swift */,
 				9C6B01EFFB3248C3DCB738D8 /* DownloadManager.swift */,
+				E7CE284746159FD8561B44C5 /* LogReporter.swift */,
 				BF8939B2D186E19667C038A5 /* PhotoLibraryService.swift */,
 				78D270CA190879A9F0B046E9 /* UploadManager.swift */,
 			);
@@ -196,6 +207,7 @@
 		F55AE1F378C4146B4193D66F /* Settings */ = {
 			isa = PBXGroup;
 			children = (
+				11C0C95C1FC10497D1F6C144 /* DiskInfoView.swift */,
 				F4217984CDFF4D0A6CFA0A72 /* SettingsView.swift */,
 				35ACFB5F30D43BE68B670098 /* TrashView.swift */,
 			);
@@ -288,6 +300,8 @@
 				5FF94CD3AF4B6B58432EFF37 /* BackgroundSyncManager.swift in Sources */,
 				45E87B7572AD5698160CC7E7 /* BonjourBrowser.swift in Sources */,
 				D83B1F2997435CC77724655C /* ContentView.swift in Sources */,
+				CA2B1613B56033AED93860B7 /* DiskDiagnostics.swift in Sources */,
+				912A679145B32D89C3CD4967 /* DiskInfoView.swift in Sources */,
 				69A899862D6B5714E1F896C9 /* DownloadManager.swift in Sources */,
 				21FBDC0465DF9125E176A9BA /* FileFingerprint.swift in Sources */,
 				2FC5A9E92C66259B7EAF559B /* Folder.swift in Sources */,
@@ -295,6 +309,7 @@
 				2D597EFA88F78B0C400DB026 /* GalleryView.swift in Sources */,
 				F4EE49C82A5FDEB0661A5626 /* GalleryViewModel.swift in Sources */,
 				EAF45DBC63FE4B86BBC6ECF9 /* HealthResponse.swift in Sources */,
+				AC0F991661E2C9D90F9E8258 /* LogReporter.swift in Sources */,
 				32408437187A0520834D81F1 /* PVLogger.swift in Sources */,
 				2D753E460B8FABFDDECBBA50 /* PandaVaultApp.swift in Sources */,
 				9C6680DF6B558F37E8CDD4EF /* PhotoLibraryService.swift in Sources */,
@@ -304,6 +319,7 @@
 				06E3DF727A4E375D1D83D7AD /* UploadManager.swift in Sources */,
 				F9C922D3A9853F24853993A0 /* UploadSession.swift in Sources */,
 				38A483D483BD4EB9FBA34F9F /* UploadView.swift in Sources */,
+				137756ADF508F404D6CEEA76 /* VolumeInfo.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

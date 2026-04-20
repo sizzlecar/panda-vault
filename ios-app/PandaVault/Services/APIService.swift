@@ -105,6 +105,12 @@ final class APIService: Sendable {
         return resp.results.map(\.asset)
     }
 
+    // MARK: - Volumes
+
+    func getVolumes() async throws -> [VolumeInfo] {
+        try await get("/api/volumes")
+    }
+
     // MARK: - Trash
 
     func getTrash(limit: Int = 200, offset: Int = 0) async throws -> [Asset] {

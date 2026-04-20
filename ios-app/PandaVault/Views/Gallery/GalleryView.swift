@@ -299,29 +299,91 @@ private struct GalleryTimelineView: View {
 
     @Namespace private var scrollSpace
     @State private var scrollTarget: String?
+    @State private var selectedYear: String?
+    @State private var activeMonth: String?
+    /// 当前屏幕上可见的所有月份 section（通过 onAppear/onDisappear 维护）
+    /// max(visibleMonths) = 时间线上最新的可见月份 = 页面最顶部那块
+    @State private var visibleMonths: Set<String> = []
+    /// 用户上次主动 tap 的时间戳 —— 短时间内抑制 visibleMonths 的 onChange 自动更新，
+    /// 避免 LazyVStack 残留的上一屏 onAppear 把 activeMonth 拉错
+    @State private var lastManualTap = Date.distantPast
+
+    private var years: [String] {
+        // timeline 按月倒序排，取唯一的年，保持顺序（最新年在前）
+        var seen: Set<String> = []
+        var ordered: [String] = []
+        for g in vm.timeline {
+            let y = String(g.month.prefix(4))
+            if seen.insert(y).inserted { ordered.append(y) }
+        }
+        return ordered
+    }
+
+    private var effectiveYear: String? {
+        selectedYear ?? years.first
+    }
+
+    private var monthsOfSelectedYear: [TimelineGroup] {
+        guard let y = effectiveYear else { return [] }
+        return vm.timeline.filter { $0.month.hasPrefix(y) }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
-            // 月份快速跳转栏
+            // 月份快速跳转栏：年 + 月 两行
             if !vm.timeline.isEmpty && vm.searchText.isEmpty && !vm.isImageSearchResult {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(vm.timeline) { group in
-                            Button {
-                                scrollTarget = group.month
-                            } label: {
-                                Text(shortMonth(group.month))
-                                    .font(.system(.caption2, design: .monospaced).bold())
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 5)
-                                    .background(PV.cyan.opacity(0.1), in: Capsule())
-                                    .foregroundStyle(PV.cyan)
+                VStack(spacing: 4) {
+                    // 年行
+                    if years.count > 1 {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 6) {
+                                ForEach(years, id: \.self) { y in
+                                    let active = effectiveYear == y
+                                    Button {
+                                        lastManualTap = Date()
+                                        selectedYear = y
+                                        // 切换年时滚动到该年最新月份
+                                        if let first = vm.timeline.first(where: { $0.month.hasPrefix(y) }) {
+                                            activeMonth = first.month
+                                            scrollTarget = first.month
+                                        }
+                                    } label: {
+                                        Text(y + "年")
+                                            .font(.system(.caption2, design: .monospaced).bold())
+                                            .padding(.horizontal, 10)
+                                            .padding(.vertical, 5)
+                                            .background(active ? PV.cyan : PV.cyan.opacity(0.08), in: Capsule())
+                                            .foregroundStyle(active ? .white : PV.cyan)
+                                    }
+                                }
                             }
+                            .padding(.horizontal)
                         }
                     }
-                    .padding(.horizontal)
-                    .padding(.vertical, 6)
+                    // 月份行（根据所选年过滤）
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(monthsOfSelectedYear) { group in
+                                let active = activeMonth == group.month
+                                Button {
+                                    lastManualTap = Date()
+                                    activeMonth = group.month
+                                    selectedYear = String(group.month.prefix(4))
+                                    scrollTarget = group.month
+                                } label: {
+                                    Text(shortMonthOnly(group.month))
+                                        .font(.system(.caption2, design: .monospaced).bold())
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 5)
+                                        .background(active ? PV.cyan : PV.cyan.opacity(0.1), in: Capsule())
+                                        .foregroundStyle(active ? .white : PV.cyan)
+                                }
+                            }
+                        }
+                        .padding(.horizontal)
+                    }
                 }
+                .padding(.vertical, 6)
                 .background(Color(.systemBackground))
             }
 
@@ -352,6 +414,16 @@ private struct GalleryTimelineView: View {
                     }
                     scrollTarget = nil
                 }
+                .onChange(of: visibleMonths) { _, new in
+                    // tap 触发的滚动期间抑制自动更新 —— 避免 LazyVStack 残留的旧 section
+                    // 短暂出现在 visibleMonths 里，把 activeMonth 拉错
+                    guard Date().timeIntervalSince(lastManualTap) > 0.8 else { return }
+                    // 页面最顶部 section = 时间线上最新的可见月份（timeline 按月倒序）
+                    guard let top = new.max() else { return }
+                    if activeMonth != top { activeMonth = top }
+                    let y = String(top.prefix(4))
+                    if selectedYear != y { selectedYear = y }
+                }
             }
         }
     }
@@ -362,6 +434,13 @@ private struct GalleryTimelineView: View {
         guard parts.count == 2, let m = Int(parts[1]) else { return month }
         let y = String(parts[0].suffix(2))
         return "\(y).\(m)月"
+    }
+
+    /// "2026-03" → "3月"（已在外层选定年，月份行不再重复显示年份）
+    private func shortMonthOnly(_ month: String) -> String {
+        let parts = month.split(separator: "-")
+        guard parts.count == 2, let m = Int(parts[1]) else { return month }
+        return "\(m)月"
     }
 
     private var timelineContent: some View {
@@ -389,6 +468,10 @@ private struct GalleryTimelineView: View {
                         .id(group.month)
                         .onAppear {
                             vm.ensureMonthLoaded(group.month)
+                            visibleMonths.insert(group.month)
+                        }
+                        .onDisappear {
+                            visibleMonths.remove(group.month)
                         }
                 }
             }
@@ -425,7 +508,7 @@ private struct TimelineSectionHeader: View {
 
 // MARK: - Assets Grid
 
-private struct GalleryAssetsGrid: View {
+struct GalleryAssetsGrid: View {
     let assets: [Asset]
     let api: APIService
     @Binding var isSelecting: Bool
@@ -454,7 +537,7 @@ private struct GalleryAssetsGrid: View {
 
 // MARK: - Single Asset Cell
 
-private struct GalleryAssetCell: View {
+struct GalleryAssetCell: View {
     let asset: Asset
     let api: APIService
     @Binding var isSelecting: Bool
@@ -517,20 +600,57 @@ private struct GalleryFoldersView: View {
     let api: APIService
     @Binding var selectedFolder: Folder?
 
+    @State private var sortOption: FolderSortOption = .nameAsc
+
     var body: some View {
-        ScrollView {
-            if vm.folders.isEmpty && !vm.isLoading {
-                GalleryFoldersEmptyState()
-            } else {
-                foldersGrid
+        VStack(spacing: 0) {
+            sortBar
+            ScrollView {
+                if vm.folders.isEmpty && !vm.isLoading {
+                    GalleryFoldersEmptyState()
+                } else {
+                    foldersGrid
+                }
             }
+            .refreshable { await vm.loadFolders() }
         }
         .task { await vm.loadFolders() }
     }
 
+    private var sortBar: some View {
+        HStack {
+            Menu {
+                ForEach(FolderSortOption.allCases) { opt in
+                    Button {
+                        sortOption = opt
+                    } label: {
+                        if opt == sortOption {
+                            Label(opt.rawValue, systemImage: "checkmark")
+                        } else {
+                            Text(opt.rawValue)
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.up.arrow.down.square")
+                    Text(sortOption.rawValue)
+                        .font(.system(.caption, design: .monospaced).bold())
+                }
+                .foregroundStyle(PV.cyan)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(PV.cyan.opacity(0.08), in: Capsule())
+            }
+            Spacer()
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 6)
+    }
+
     private var foldersGrid: some View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 12)], spacing: 12) {
-            ForEach(vm.folders) { folder in
+            ForEach(vm.folders.sorted(by: sortOption)) { folder in
                 Button { selectedFolder = folder } label: {
                     FolderCard(folder: folder, api: api)
                 }
@@ -600,7 +720,7 @@ private struct GalleryFoldersEmptyState: View {
 
 // MARK: - Bottom Inset (download progress + batch toolbar)
 
-private struct GalleryBottomInset: View {
+struct GalleryBottomInset: View {
     let appState: AppState
     let isSelecting: Bool
     let selectedIds: Set<UUID>
@@ -629,7 +749,7 @@ private struct GalleryBottomInset: View {
 
 // MARK: - Download Progress Bar
 
-private struct GalleryDownloadProgress: View {
+struct GalleryDownloadProgress: View {
     @ObservedObject var dm: DownloadManager
 
     var body: some View {
@@ -661,7 +781,7 @@ private struct GalleryDownloadProgress: View {
 
 // MARK: - Batch Toolbar
 
-private struct GalleryBatchToolbar: View {
+struct GalleryBatchToolbar: View {
     let count: Int
     @Binding var showDeleteConfirm: Bool
     @Binding var showBatchMove: Bool
@@ -745,11 +865,51 @@ struct FolderCard: View {
                 .font(.system(.caption, design: .monospaced).bold())
                 .foregroundStyle(.primary)
                 .lineLimit(1)
-            if let count = folder.assetCount {
-                Text("\(count) items")
-                    .font(.system(.caption2, design: .monospaced))
-                    .foregroundStyle(.tertiary)
+            HStack(spacing: 6) {
+                if folder.assetCount == nil || folder.totalBytes == nil {
+                    // 后端懒计算中
+                    Text("计算中…")
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundStyle(.tertiary)
+                } else {
+                    Text("\(folder.assetCount ?? 0) items")
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundStyle(.tertiary)
+                    if let total = folder.totalBytes, total > 0 {
+                        Text("·")
+                            .font(.system(.caption2, design: .monospaced))
+                            .foregroundStyle(.tertiary)
+                        Text(total.humanReadableBytes)
+                            .font(.system(.caption2, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
+        }
+    }
+}
+
+// MARK: - Folder Sort
+
+enum FolderSortOption: String, CaseIterable, Identifiable {
+    case nameAsc = "名称 ↑"
+    case nameDesc = "名称 ↓"
+    case sizeDesc = "大小 ↓"
+    case sizeAsc = "大小 ↑"
+    case updatedDesc = "最近修改 ↓"
+    case updatedAsc = "最近修改 ↑"
+    var id: String { rawValue }
+}
+
+extension Array where Element == Folder {
+    func sorted(by option: FolderSortOption) -> [Folder] {
+        switch option {
+        case .nameAsc:     return sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        case .nameDesc:    return sorted { $0.name.localizedStandardCompare($1.name) == .orderedDescending }
+        case .sizeDesc:    return sorted { ($0.totalBytes ?? -1) > ($1.totalBytes ?? -1) }
+        case .sizeAsc:     return sorted { ($0.totalBytes ?? Int64.max) < ($1.totalBytes ?? Int64.max) }
+        case .updatedDesc: return sorted { ($0.updatedAt ?? .distantPast) > ($1.updatedAt ?? .distantPast) }
+        case .updatedAsc:  return sorted { ($0.updatedAt ?? .distantFuture) < ($1.updatedAt ?? .distantFuture) }
         }
     }
 }
