@@ -64,10 +64,20 @@ final class UploadManager: ObservableObject {
         return "\(done)/\(total) 完成"
     }
 
-    func addFiles(_ urls: [(url: URL, filename: String, size: Int64, shootAt: Date?)], folderId: UUID? = nil) {
+    func addFiles(
+        _ urls: [(url: URL, filename: String, size: Int64, shootAt: Date?, localIdentifier: String?)],
+        folderId: UUID? = nil
+    ) {
         let before = tasks.count
         for file in urls {
-            let task = UploadTask(filename: file.filename, fileURL: file.url, fileSize: file.size, folderId: folderId, shootAt: file.shootAt)
+            let task = UploadTask(
+                filename: file.filename,
+                fileURL: file.url,
+                fileSize: file.size,
+                folderId: folderId,
+                shootAt: file.shootAt,
+                localIdentifier: file.localIdentifier
+            )
             tasks.append(task)
         }
         let pending = tasks.filter { $0.status == .pending }.count

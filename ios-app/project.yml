@@ -19,6 +19,10 @@ targets:
     platform: iOS
     sources:
       - path: PandaVault
+      - path: Shared
+    dependencies:
+      - target: PandaVaultShare
+        embed: true
     settings:
       base:
         INFOPLIST_FILE: PandaVault/Resources/Info.plist
@@ -26,6 +30,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.pandavault.app
         TARGETED_DEVICE_FAMILY: "1"
         SUPPORTS_XR_DESIGNED_FOR: false
+        CODE_SIGN_ENTITLEMENTS: PandaVault/PandaVault.entitlements
     info:
       path: PandaVault/Resources/Info.plist
       properties:
@@ -54,3 +59,18 @@ targets:
           - Fraunces.ttf
           - JetBrainsMono-Regular.ttf
           - JetBrainsMono-Medium.ttf
+
+  PandaVaultShare:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: PandaVaultShare
+      - path: Shared
+    settings:
+      base:
+        INFOPLIST_FILE: PandaVaultShare/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: com.pandavault.app.share
+        PRODUCT_NAME: PandaVaultShare
+        CODE_SIGN_ENTITLEMENTS: PandaVaultShare/PandaVaultShare.entitlements
+        TARGETED_DEVICE_FAMILY: "1"
+        SUPPORTS_XR_DESIGNED_FOR: false

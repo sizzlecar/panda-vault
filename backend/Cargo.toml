@@ -27,6 +27,7 @@ uuid = { version = "1", features = ["serde", "v4"] }
 reqwest = { version = "0.12", features = ["json"] }
 fs2 = "0.4.3"
 walkdir = "2.5.0"
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [target.'cfg(not(target_os = "macos"))'.dependencies]
 mdns-sd = "0.11"

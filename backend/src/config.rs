@@ -29,6 +29,10 @@ pub struct Config {
     pub inbox_dir: PathBuf,   // 未分类素材目录 (raw/inbox)
     pub trash_dir: PathBuf,   // 软删除素材目录 (raw/.trash)
 
+    /// 剪辑工程包导出目录（默认 STORAGE_ROOT/exports）
+    /// Mac 用户直接 Finder 打开此目录即可看到 .zip
+    pub export_dir: PathBuf,
+
     pub job_poll_interval_ms: u64,
 
     pub ffmpeg_bin: String,
@@ -54,6 +58,12 @@ impl Config {
         let inbox_dir = PathBuf::from(env::var("INBOX_DIR").unwrap_or_else(|_| "/data/raw/inbox".into()));
         let trash_dir = PathBuf::from(env::var("TRASH_DIR").unwrap_or_else(|_| "/data/raw/.trash".into()));
 
+        let export_dir = PathBuf::from(
+            env::var("EXPORT_DIR").unwrap_or_else(|_| {
+                storage_root.join("exports").to_string_lossy().to_string()
+            })
+        );
+
         let job_poll_interval_ms = env::var("JOB_POLL_INTERVAL_MS")
             .ok()
             .and_then(|v| v.parse::<u64>().ok())
@@ -74,6 +84,7 @@ impl Config {
             albums_dir,
             inbox_dir,
             trash_dir,
+            export_dir,
             job_poll_interval_ms,
             ffmpeg_bin,
             ffprobe_bin,
@@ -88,6 +99,7 @@ impl Config {
         tokio::fs::create_dir_all(&self.albums_dir).await?;
         tokio::fs::create_dir_all(&self.inbox_dir).await?;
         tokio::fs::create_dir_all(&self.trash_dir).await?;
+        tokio::fs::create_dir_all(&self.export_dir).await?;
         Ok(())
     }
 

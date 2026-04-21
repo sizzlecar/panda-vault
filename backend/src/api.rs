@@ -72,6 +72,9 @@ pub fn routes(state: AppState) -> Router {
         .route("/api/scan/:id", get(get_scan_session))
         // 客户端日志上报
         .route("/api/client-logs", post(crate::client_logs::ingest).get(crate::client_logs::browse))
+        // 剪辑工程包导出 —— 选一组 asset → zip + metadata.json → 写到 cfg.export_dir
+        .route("/api/export", post(crate::export::create_export).get(crate::export::list_exports))
+        .route("/api/export/:filename", delete(crate::export::delete_export))
         .nest_service(
             "/proxies",
             tower_http::services::ServeDir::new(proxies_dir).append_index_html_on_directories(false),
@@ -79,6 +82,10 @@ pub fn routes(state: AppState) -> Router {
         .nest_service(
             "/raw",
             tower_http::services::ServeDir::new(state.cfg.raw_dir.clone()).append_index_html_on_directories(false),
+        )
+        .nest_service(
+            "/exports",
+            tower_http::services::ServeDir::new(state.cfg.export_dir.clone()).append_index_html_on_directories(false),
         )
         .with_state(state)
 }
@@ -139,20 +146,20 @@ impl AssetDto {
 
 #[derive(sqlx::FromRow)]
 pub struct AssetRow {
-    id: Uuid,
-    filename: String,
-    file_path: String,
-    proxy_path: Option<String>,
-    thumb_path: Option<String>,
-    file_hash: String,
-    size_bytes: i64,
-    shoot_at: Option<NaiveDateTime>,
-    created_at: Option<NaiveDateTime>,
-    duration_sec: Option<i32>,
-    width: Option<i32>,
-    height: Option<i32>,
-    volume_id: Option<Uuid>,
-    note: Option<String>,
+    pub id: Uuid,
+    pub filename: String,
+    pub file_path: String,
+    pub proxy_path: Option<String>,
+    pub thumb_path: Option<String>,
+    pub file_hash: String,
+    pub size_bytes: i64,
+    pub shoot_at: Option<NaiveDateTime>,
+    pub created_at: Option<NaiveDateTime>,
+    pub duration_sec: Option<i32>,
+    pub width: Option<i32>,
+    pub height: Option<i32>,
+    pub volume_id: Option<Uuid>,
+    pub note: Option<String>,
 }
 
 // 一期：流式上传 -> 落盘 -> SHA256 去重 -> 缩略图 -> 入库

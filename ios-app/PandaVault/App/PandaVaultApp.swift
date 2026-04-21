@@ -3,6 +3,7 @@ import SwiftUI
 @main
 struct PandaVaultApp: App {
     @StateObject private var appState = AppState()
+    @Environment(\.scenePhase) private var scenePhase
 
     init() {
         BackgroundSyncManager.shared.registerTasks()
@@ -30,9 +31,24 @@ struct PandaVaultApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(appState)
+                .environmentObject(appState.uploadManager) // Share Extension 也喂这同一个
                 .preferredColorScheme(.light)
                 .tint(PV.caramel)
                 .background(PV.bg.ignoresSafeArea())
+                .task {
+                    // 启动时扫 Share Extension 投进来的文件
+                    let n = await appState.ingestShareInbox()
+                    PVLog.lifecycle("启动扫 shareInbox: 入队 \(n) 项")
+                }
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            // 从后台回前台：扫一次 inbox，捕获刚从微信/剪映分享过来的
+            if newPhase == .active {
+                Task {
+                    let n = await appState.ingestShareInbox()
+                    if n > 0 { PVLog.lifecycle("前台回归扫 shareInbox: 入队 \(n) 项") }
+                }
+            }
         }
     }
 }

@@ -10,7 +10,8 @@ private enum UploadSheetType: Identifiable {
 
 struct UploadView: View {
     @EnvironmentObject var appState: AppState
-    @StateObject private var uploadManager: UploadManager
+    /// 跟 AppState 共用同一个 UploadManager —— Share Extension 投进收件箱的文件也走它
+    @EnvironmentObject var uploadManager: UploadManager
     @State private var showPicker = false
     @State private var selectedItems: [PhotosPickerItem] = []
     @State private var folders: [Folder] = []
@@ -21,9 +22,10 @@ struct UploadView: View {
     @State private var isExporting = false
     @State private var exportProgress = ""
 
-    init() {
-        _uploadManager = StateObject(wrappedValue: UploadManager(api: APIService(baseURL: "")))
-    }
+    // 删除本地原图（备份完成后的可选动作）
+    @State private var isDeletingLocals = false
+    @State private var deleteResultMsg: String?
+    @State private var showDeleteResult = false
 
     var body: some View {
         NavigationStack {
@@ -76,8 +78,13 @@ struct UploadView: View {
         .onChange(of: selectedItems) {
             Task { await handleSelection() }
         }
+        .alert("", isPresented: $showDeleteResult) {
+            Button("好") {}
+        } message: {
+            Text(deleteResultMsg ?? "")
+        }
         .task {
-            uploadManager.updateAPI(appState.api)
+            // UploadManager 由 AppState 持有 & 维护 API baseURL，这里只拉 folders
             await loadFolders()
         }
     }
@@ -235,9 +242,101 @@ struct UploadView: View {
                 if case .duplicated = $0.status { return true }
                 return false
             }
+
+            // 已备份但本地原图还没清理的（系统会弹原生确认框）
+            let deletableLocals = uploadManager.tasks.filter { task in
+                guard task.localIdentifier != nil, !task.localDeleted else { return false }
+                if case .completed = task.status { return true }
+                if case .duplicated = task.status { return true }
+                return false
+            }
+            if !deletableLocals.isEmpty {
+                deleteLocalsCard(count: deletableLocals.count)
+            }
+
             if !doneItems.isEmpty {
                 DoneUploadsCard(tasks: doneItems)
             }
+        }
+    }
+
+    /// "备份后可选删除本地" cream 卡片
+    private func deleteLocalsCard(count: Int) -> some View {
+        creamCard(header: "整理空间") {
+            Button {
+                Task { await deleteLocalsAfterBackup() }
+            } label: {
+                HStack(spacing: 12) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 9).fill(PV.berry.opacity(0.13))
+                        Image(systemName: "trash")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(PV.berry)
+                    }
+                    .frame(width: 30, height: 30)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("删除本地原图")
+                            .font(PVFont.body(14.5, weight: .medium))
+                            .foregroundStyle(PV.ink)
+                        Text("已备份到 NAS · 系统会弹确认框")
+                            .font(PVFont.body(11.5))
+                            .foregroundStyle(PV.sub)
+                    }
+
+                    Spacer()
+
+                    if isDeletingLocals {
+                        ProgressView().tint(PV.berry)
+                    } else {
+                        Text("\(count)")
+                            .font(PVFont.mono(12, weight: .medium))
+                            .foregroundStyle(PV.berry)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 2)
+                            .background(PV.berry.opacity(0.13))
+                            .clipShape(Capsule())
+                    }
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(PV.muted)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 13)
+            }
+            .buttonStyle(.plain)
+            .disabled(isDeletingLocals)
+        }
+    }
+
+    private func deleteLocalsAfterBackup() async {
+        let targets = uploadManager.tasks.filter { task in
+            guard let _ = task.localIdentifier, !task.localDeleted else { return false }
+            if case .completed = task.status { return true }
+            if case .duplicated = task.status { return true }
+            return false
+        }
+        let ids = targets.compactMap(\.localIdentifier)
+        guard !ids.isEmpty else { return }
+
+        PVLog.upload("deleteLocals[tap] 用户点击清理本地原图按钮 N=\(ids.count)")
+
+        isDeletingLocals = true
+        defer { isDeletingLocals = false }
+
+        do {
+            let deleted = try await PhotoLibraryService.deleteOriginals(localIdentifiers: ids)
+            // 打上 localDeleted 标记 —— 再次上传时不会出现在整理入口
+            for task in targets { task.localDeleted = true }
+            deleteResultMsg = "已清理本地 \(deleted) 张原图"
+            showDeleteResult = true
+            PVLog.upload("deleteLocals: 成功 \(deleted) / 请求 \(ids.count)")
+        } catch PhotoError.userCancelled {
+            PVLog.upload("deleteLocals: 用户在系统确认框点了取消")
+        } catch {
+            deleteResultMsg = "删除失败: \(error.localizedDescription)"
+            showDeleteResult = true
+            PVLog.uploadError("deleteLocals 失败: \(error.localizedDescription)")
         }
     }
 
@@ -301,7 +400,7 @@ struct UploadView: View {
         PVLog.upload("handleSelection[start] 选中 \(items.count) 项，folderId=\(selectedFolderId?.uuidString ?? "nil")")
         PVLog.disk("导出前磁盘快照")
         isExporting = true
-        var files: [(url: URL, filename: String, size: Int64, shootAt: Date?)] = []
+        var files: [(url: URL, filename: String, size: Int64, shootAt: Date?, localIdentifier: String?)] = []
 
         var skippedNoIdentifier = 0
         var skippedNoPHAsset = 0
@@ -322,7 +421,7 @@ struct UploadView: View {
             if let phAsset {
                 do {
                     let exported = try await PhotoLibraryService.exportAsset(phAsset)
-                    files.append((exported.url, exported.filename, exported.size, phAsset.creationDate))
+                    files.append((exported.url, exported.filename, exported.size, phAsset.creationDate, id))
                     PVLog.upload("handleSelection[export-ok] \(i + 1)/\(items.count) name=\(exported.filename) size=\(exported.size.humanReadableBytes)")
                 } catch {
                     exportFailed += 1
@@ -332,7 +431,7 @@ struct UploadView: View {
                 let name = "image_\(UUID().uuidString.prefix(8)).jpg"
                 let tmpURL = FileManager.default.temporaryDirectory.appendingPathComponent(name)
                 try? data.write(to: tmpURL)
-                files.append((tmpURL, name, Int64(data.count), nil))
+                files.append((tmpURL, name, Int64(data.count), nil, nil))
                 PVLog.upload("handleSelection[fallback] \(i + 1)/\(items.count) PHAsset 丢失，用 transferable 兜底 size=\(Int64(data.count).humanReadableBytes)")
             } else {
                 skippedNoPHAsset += 1
@@ -423,87 +522,120 @@ private struct DoneUploadsCard: View {
     }
 }
 
-// MARK: - Upload Task Row
+// MARK: - Upload Task Row (对应 cream.jsx UploadRow — mono 小胶囊状态 + 圆进度)
 
 struct UploadTaskRow: View {
     @ObservedObject var task: UploadTask
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: iconName)
-                .font(.title3)
-                .foregroundStyle(iconColor)
-                .frame(width: 28)
+        HStack(spacing: 11) {
+            // 左侧媒体类型图标（cream: mint 成功 / caramel 重复 / muted 其他）
+            ZStack {
+                Image(systemName: iconName)
+                    .font(.system(size: 18))
+                    .foregroundStyle(iconColor)
+            }
+            .frame(width: 28, height: 28)
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(task.filename)
-                    .font(.system(.caption, design: .monospaced))
+                    .font(PVFont.mono(12.5))
+                    .foregroundStyle(PV.ink)
                     .lineLimit(1)
+                    .truncationMode(.middle)
                 HStack(spacing: 6) {
                     Text(ByteCountFormatter.string(fromByteCount: task.fileSize, countStyle: .file))
-                        .font(.system(.caption2, design: .monospaced))
-                        .foregroundStyle(.tertiary)
-                    statusText
+                        .font(PVFont.mono(10.5))
+                        .foregroundStyle(PV.muted)
+                    statusChip
                 }
             }
 
-            Spacer()
+            Spacer(minLength: 8)
 
-            switch task.status {
-            case .uploading(let progress):
-                CircularProgressView(progress: progress).frame(width: 24, height: 24)
-            case .completed:
-                Image(systemName: "checkmark").foregroundStyle(PV.green).font(.caption.bold())
-            case .duplicated:
-                Image(systemName: "equal.circle").foregroundStyle(PV.cyan).font(.caption.bold())
-            case .failed:
-                Image(systemName: "xmark").foregroundStyle(PV.pink).font(.caption.bold())
-            default:
-                Image(systemName: "ellipsis").foregroundStyle(.tertiary).font(.caption)
-            }
+            rightWidget
+                .frame(width: 22, height: 22)
         }
-        .padding(.vertical, 2)
     }
 
     private var iconName: String {
         let ext = (task.filename as NSString).pathExtension.lowercased()
-        if ["mp4", "mov", "m4v"].contains(ext) { return "film" }
+        if ["mp4", "mov", "m4v"].contains(ext) { return "video" }
         return "photo"
     }
 
     private var iconColor: Color {
         switch task.status {
-        case .completed, .duplicated: return PV.green
-        case .failed: return PV.pink
-        default: return Color(.tertiaryLabel)
+        case .completed: return PV.mint
+        case .duplicated: return PV.caramel
+        case .failed: return PV.berry
+        default: return PV.muted
         }
     }
 
+    /// cream.jsx 风 mono 胶囊：`DONE` / `EXIST` / `WAIT` / `62%`
     @ViewBuilder
-    private var statusText: some View {
+    private var statusChip: some View {
         switch task.status {
         case .pending:
-            PixelTag(text: "WAIT", color: Color(.tertiaryLabel))
+            monoChip("WAIT", fg: PV.muted, bg: PV.ink.opacity(0.08))
         case .uploading(let p):
-            PixelTag(text: "\(Int(p * 100))%", color: PV.cyan)
+            monoChip("\(Int(p * 100))%", fg: PV.caramel, bg: PV.caramel.opacity(0.13))
         case .completed:
-            PixelTag(text: "DONE", color: PV.green)
+            monoChip("DONE", fg: PV.mint, bg: PV.mint.opacity(0.22))
         case .duplicated:
-            PixelTag(text: "EXIST", color: PV.cyan)
+            monoChip("EXIST", fg: PV.caramel, bg: PV.caramel.opacity(0.13))
         case .failed(let msg):
-            PixelTag(text: msg, color: PV.pink)
+            monoChip(msg.isEmpty ? "FAIL" : msg, fg: PV.berry, bg: PV.berry.opacity(0.16))
+        }
+    }
+
+    private func monoChip(_ text: String, fg: Color, bg: Color) -> some View {
+        Text(text)
+            .font(PVFont.mono(10, weight: .medium))
+            .foregroundStyle(fg)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 1)
+            .background(bg)
+            .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+            .lineLimit(1)
+    }
+
+    /// 右端指示：上传中 → 圆环进度；完成 → 对勾；重复 → 等号；等待 → 省略号；失败 → 叉
+    @ViewBuilder
+    private var rightWidget: some View {
+        switch task.status {
+        case .uploading(let p):
+            CircularProgressView(progress: p)
+        case .completed:
+            Image(systemName: "checkmark")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(PV.mint)
+        case .duplicated:
+            Text("=")
+                .font(PVFont.mono(15, weight: .medium))
+                .foregroundStyle(PV.caramel)
+        case .pending:
+            Text("⋯")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(PV.muted)
+        case .failed:
+            Image(systemName: "xmark")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(PV.berry)
         }
     }
 }
 
+/// 对应 cream.jsx 的圆环进度 — 焦糖色 2.5pt 线宽
 struct CircularProgressView: View {
     let progress: Double
     var body: some View {
         ZStack {
-            Circle().stroke(Color(.secondarySystemFill), lineWidth: 3)
+            Circle().stroke(PV.ink.opacity(0.18), lineWidth: 2.5)
             Circle()
-                .trim(from: 0, to: progress)
-                .stroke(PV.cyan, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                .trim(from: 0, to: max(0, min(1, progress)))
+                .stroke(PV.caramel, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
                 .rotationEffect(.degrees(-90))
         }
     }

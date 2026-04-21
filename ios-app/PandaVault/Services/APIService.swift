@@ -221,6 +221,41 @@ final class APIService: Sendable {
         try validateResponse(response)
     }
 
+    // MARK: - Export (剪辑工程包 —— 选一组 → zip + metadata.json → 写到 Mac 侧 exports/)
+
+    /// 创建一个导出包。大文件可能跑 1-5min，内部用专用 long-timeout session
+    func createExport(assetIds: [UUID], name: String?) async throws -> ExportInfo {
+        struct Req: Codable { let assetIds: [UUID]; let name: String? }
+        guard let url = makeURL("/api/export") else { throw APIError.invalidURL }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let encoder = JSONEncoder()
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        request.httpBody = try encoder.encode(Req(assetIds: assetIds, name: name))
+        // 专用长超时 session —— 100GB 级 export 可能需要数分钟
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 3600
+        config.timeoutIntervalForResource = 7200
+        let longSession = URLSession(configuration: config)
+        let (data, response) = try await longSession.data(for: request)
+        try validateResponse(response)
+        return try decoder.decode(ExportInfo.self, from: data)
+    }
+
+    func listExports() async throws -> [ExportInfo] {
+        try await get("/api/export")
+    }
+
+    func deleteExport(filename: String) async throws {
+        let encoded = filename.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? filename
+        guard let url = makeURL("/api/export/\(encoded)") else { throw APIError.invalidURL }
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        let (_, response) = try await session.data(for: request)
+        try validateResponse(response)
+    }
+
     // MARK: - Upload
 
     private let largeFileThreshold: Int64 = 50 * 1024 * 1024 // 50MB

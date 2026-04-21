@@ -4,6 +4,7 @@ mod chunked_upload;
 mod client_logs;
 mod config;
 mod db;
+mod export;
 mod folder;
 mod jobs;
 mod media;

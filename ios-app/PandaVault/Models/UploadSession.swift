@@ -42,11 +42,26 @@ final class UploadTask: ObservableObject, Identifiable {
     let folderId: UUID?
     let shootAt: Date?
 
-    init(filename: String, fileURL: URL, fileSize: Int64, folderId: UUID? = nil, shootAt: Date? = nil) {
+    /// 对应系统相册里原图的 PHAsset.localIdentifier
+    /// 上传成功/重复后可用它批量删除本地原图（系统会弹官方确认框）
+    let localIdentifier: String?
+
+    /// 相册原图已在本次会话里被删除 —— UI 上可挂个标记
+    @Published var localDeleted = false
+
+    init(
+        filename: String,
+        fileURL: URL,
+        fileSize: Int64,
+        folderId: UUID? = nil,
+        shootAt: Date? = nil,
+        localIdentifier: String? = nil
+    ) {
         self.filename = filename
         self.fileURL = fileURL
         self.fileSize = fileSize
         self.folderId = folderId
         self.shootAt = shootAt
+        self.localIdentifier = localIdentifier
     }
 }

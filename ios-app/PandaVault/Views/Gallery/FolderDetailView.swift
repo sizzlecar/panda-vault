@@ -44,7 +44,6 @@ struct FolderDetailView: View {
     @State private var showRenameAlert = false
     @State private var renameText = ""
     @State private var showCreateFolder = false
-    @State private var newFolderName = ""
     @State private var deleteBlockMessage = ""
     @State private var showDeleteBlocked = false
 
@@ -66,20 +65,32 @@ struct FolderDetailView: View {
     @State private var subfolderSort: FolderSortOption = .nameAsc
     @State private var assetSort: AssetSortOption = .timeDesc
 
+    // 导出工程包
+    @State private var showExport = false
+
     // 面包屑导航
     @State private var breadcrumbs: [(name: String, id: UUID)] = []
     @State private var currentFolder: Folder?
 
     private var activeFolder: Folder { currentFolder ?? folder }
 
+    /// 面包屑路径（用于 NewSubfolderSheet 预览）
+    /// 根：`/2026春节/`  嵌套：`/2026春节/子1/`
+    private var breadcrumbPath: String {
+        var parts = [folder.name]
+        parts.append(contentsOf: breadcrumbs.map(\.name))
+        return "/" + parts.joined(separator: "/") + "/"
+    }
+
     var body: some View {
         FolderDetailContent(
             breadcrumbs: breadcrumbs,
             rootFolderName: folder.name,
+            activeFolderName: activeFolder.name,
             subfolders: subfolders.sorted(by: subfolderSort),
             filteredAssets: displayedAssets.sorted(by: assetSort),
             isLoading: isLoading,
-            searchText: searchText,
+            searchText: $searchText,
             api: api,
             selectedAsset: $selectedAsset,
             isSelecting: $isSelecting,
@@ -110,7 +121,6 @@ struct FolderDetailView: View {
         .navigationTitle(activeFolder.name)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
-        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "在「\(activeFolder.name)」中搜索…")
         .onChange(of: searchText) { _, newValue in
             searchTask?.cancel()
             if newValue.isEmpty {
@@ -166,8 +176,7 @@ struct FolderDetailView: View {
                             renameText: $renameText,
                             showRenameAlert: $showRenameAlert,
                             showDeleteConfirm: $showDeleteConfirm,
-                            showCreateFolder: $showCreateFolder,
-                            newFolderName: $newFolderName
+                            showCreateFolder: $showCreateFolder
                         )
                     }
                 }
@@ -209,9 +218,13 @@ struct FolderDetailView: View {
                     showDeleteConfirm: $showBatchDeleteConfirm,
                     showBatchMove: $showBatchMove,
                     onSave: { batchSaveToPhotos() },
-                    onShare: { Task { await batchShare() } }
+                    onShare: { Task { await batchShare() } },
+                    onExport: { showExport = true }
                 )
             }
+        }
+        .sheet(isPresented: $showExport) {
+            ExportSheet(api: api, assetIds: Array(selectedIds))
         }
         .onChange(of: isSelecting) { _, newValue in
             appState.tabBarHidden = newValue && !selectedIds.isEmpty
@@ -277,10 +290,16 @@ struct FolderDetailView: View {
             Button("确定") { Task { await renameFolder() } }
             Button("取消", role: .cancel) {}
         }
-        .alert("新建文件夹", isPresented: $showCreateFolder) {
-            TextField("文件夹名称", text: $newFolderName)
-            Button("创建") { Task { await createSubfolder() } }
-            Button("取消", role: .cancel) {}
+        .sheet(isPresented: $showCreateFolder) {
+            NewSubfolderSheet(
+                parentName: activeFolder.name,
+                parentPath: breadcrumbPath,
+                api: api,
+                parentId: activeFolder.id
+            ) {
+                await loadSubfolders()
+            }
+            .presentationDetents([.medium])
         }
         .task {
             await loadSubfolders()
@@ -384,17 +403,6 @@ struct FolderDetailView: View {
         }
     }
 
-    private func createSubfolder() async {
-        let name = newFolderName.trimmingCharacters(in: .whitespaces)
-        guard !name.isEmpty else { return }
-        do {
-            let _ = try await api.createFolder(name: name, parentId: activeFolder.id)
-            await loadSubfolders()
-        } catch {
-            print("[PandaVault] Create subfolder error: \(error)")
-        }
-    }
-
     // MARK: - Batch Actions
 
     private func batchSaveToPhotos() {
@@ -457,10 +465,11 @@ struct FolderDetailView: View {
 private struct FolderDetailContent: View {
     let breadcrumbs: [(name: String, id: UUID)]
     let rootFolderName: String
+    let activeFolderName: String
     let subfolders: [Folder]
     let filteredAssets: [Asset]
     let isLoading: Bool
-    let searchText: String
+    @Binding var searchText: String
     let api: APIService
     @Binding var selectedAsset: Asset?
     @Binding var isSelecting: Bool
@@ -472,6 +481,11 @@ private struct FolderDetailContent: View {
 
     var body: some View {
         ScrollView {
+            // Cream 搜索胶囊（替代系统 .searchable —— 和 cream.jsx 第 3 屏一致）
+            CSearchPill(text: $searchText, prompt: "在「\(activeFolderName)」中搜索…")
+                .padding(.horizontal, 20)
+                .padding(.top, 4)
+
             // 面包屑导航（对应 cream.jsx 第 3 屏）
             if !breadcrumbs.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -506,42 +520,19 @@ private struct FolderDetailContent: View {
             }
 
             if !subfolders.isEmpty {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150, maximum: 200), spacing: 12)], spacing: 12) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 108, maximum: 150), spacing: 10)], spacing: 10) {
                     ForEach(subfolders) { subfolder in
                         Button {
                             onSubfolderTap?(subfolder)
                         } label: {
-                            VStack(spacing: 6) {
-                                Image(systemName: "folder.fill")
-                                    .font(.title)
-                                    .foregroundStyle(PV.cyan)
-                                Text(subfolder.name)
-                                    .font(.system(.caption, design: .monospaced))
-                                    .lineLimit(1)
-                                    .foregroundStyle(.primary)
-                                if subfolder.assetCount == nil || subfolder.totalBytes == nil {
-                                    Text("计算中…")
-                                        .font(.system(.caption2, design: .monospaced))
-                                        .foregroundStyle(.tertiary)
-                                } else {
-                                    Text("\(subfolder.assetCount ?? 0) items")
-                                        .font(.system(.caption2, design: .monospaced))
-                                        .foregroundStyle(.secondary)
-                                    if let total = subfolder.totalBytes, total > 0 {
-                                        Text(total.humanReadableBytes)
-                                            .font(.system(.caption2, design: .monospaced))
-                                            .foregroundStyle(.tertiary)
-                                    }
-                                }
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
+                            subfolderCard(subfolder)
                         }
+                        .buttonStyle(.plain)
                     }
                 }
                 .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+                .padding(.top, 4)
+                .padding(.bottom, 8)
             }
 
             // 资产网格
@@ -557,12 +548,50 @@ private struct FolderDetailContent: View {
                 )
             }
             if isLoading {
-                ProgressView().tint(PV.cyan).padding()
+                ProgressView().tint(PV.caramel).padding()
             }
         }
     }
 
-    // 排序条：子文件夹 + 资产各一个 Menu
+    /// cream.jsx 第 3 屏的子文件夹卡片：半透明白底 + 焦糖 folder icon + mono 名称/计数
+    private func subfolderCard(_ subfolder: Folder) -> some View {
+        VStack(spacing: 3) {
+            Image(systemName: "folder.fill")
+                .font(.system(size: 26))
+                .foregroundStyle(PV.caramel)
+                .padding(.top, 4)
+            Text(subfolder.name)
+                .font(PVFont.mono(12))
+                .foregroundStyle(PV.ink)
+                .lineLimit(1)
+                .padding(.top, 2)
+            if subfolder.assetCount == nil || subfolder.totalBytes == nil {
+                Text("计算中…")
+                    .font(PVFont.mono(10))
+                    .foregroundStyle(PV.muted)
+            } else {
+                Text("\(subfolder.assetCount ?? 0) items")
+                    .font(PVFont.mono(10))
+                    .foregroundStyle(PV.sub)
+                if let total = subfolder.totalBytes, total > 0 {
+                    Text(total.humanReadableBytes)
+                        .font(PVFont.mono(10))
+                        .foregroundStyle(PV.muted)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .padding(.horizontal, 10)
+        .background(Color.white.opacity(0.7))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(PV.line, lineWidth: 1)
+        )
+    }
+
+    // 排序条：子文件夹 + 资产各一个 Menu（cream 风格 — 焦糖淡底 chip）
     private var sortBar: some View {
         HStack(spacing: 8) {
             if !subfolders.isEmpty {
@@ -601,19 +630,20 @@ private struct FolderDetailContent: View {
             }
             Spacer()
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 8)
     }
 
     private func sortChip(icon: String, text: String) -> some View {
-        HStack(spacing: 4) {
-            Image(systemName: icon)
-            Text(text).font(.system(.caption2, design: .monospaced).bold())
+        HStack(spacing: 5) {
+            Image(systemName: icon).font(.system(size: 10, weight: .semibold))
+            Text(text).font(PVFont.body(11, weight: .semibold))
         }
-        .foregroundStyle(PV.cyan)
+        .foregroundStyle(PV.caramel)
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
-        .background(PV.cyan.opacity(0.08), in: Capsule())
+        .background(PV.caramel.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 
@@ -623,13 +653,144 @@ private struct FolderDetailEmptyState: View {
     let hasSearch: Bool
 
     var body: some View {
-        VStack(spacing: 12) {
-            Text(hasSearch ? "[ NO MATCH ]" : "[ EMPTY ]")
-                .font(.system(.title3, design: .monospaced))
-                .foregroundStyle(.tertiary)
+        VStack(spacing: 10) {
+            Image(systemName: hasSearch ? "magnifyingglass" : "tray")
+                .font(.system(size: 26))
+                .foregroundStyle(PV.muted)
+            Text(hasSearch ? "没有找到匹配的素材" : "这个文件夹还是空的")
+                .font(PVFont.body(13))
+                .foregroundStyle(PV.sub)
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 80)
+    }
+}
+
+// MARK: - New Subfolder Sheet (cream · 对应菜单"新建子文件夹"→ sheet)
+
+struct NewSubfolderSheet: View {
+    let parentName: String
+    let parentPath: String       // 如 "/2026春节/"
+    let api: APIService
+    let parentId: UUID
+    var onCreated: (() async -> Void)?
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var folderName = ""
+    @FocusState private var focused: Bool
+    @State private var isCreating = false
+    @State private var statusMsg = ""
+    @State private var isError = false
+
+    private var trimmedName: String {
+        folderName.trimmingCharacters(in: .whitespaces)
+    }
+
+    private var previewPath: String {
+        trimmedName.isEmpty ? parentPath : "\(parentPath)\(trimmedName)/"
+    }
+
+    var body: some View {
+        ZStack {
+            PV.bg.ignoresSafeArea()
+            VStack(alignment: .leading, spacing: 16) {
+                HStack {
+                    Text("新建子文件夹")
+                        .font(PVFont.display(22, weight: .medium))
+                        .foregroundStyle(PV.ink)
+                    Spacer()
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(PV.sub)
+                            .frame(width: 30, height: 30)
+                            .background(PV.ink.opacity(0.06), in: Circle())
+                    }
+                }
+                .padding(.top, 6)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("创建位置")
+                        .font(PVFont.sectionHeader)
+                        .tracking(1.5)
+                        .foregroundStyle(PV.muted)
+                    Text(previewPath)
+                        .font(PVFont.mono(12, weight: .medium))
+                        .foregroundStyle(PV.caramel)
+                        .lineLimit(2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(PV.caramel.opacity(0.09))
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("文件夹名称")
+                        .font(PVFont.sectionHeader)
+                        .tracking(1.5)
+                        .foregroundStyle(PV.muted)
+                    TextField("", text: $folderName, prompt:
+                        Text("比如 花絮").font(PVFont.body(14.5)).foregroundStyle(PV.muted))
+                        .font(PVFont.body(15))
+                        .tint(PV.caramel)
+                        .focused($focused)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                        .background(Color.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .strokeBorder(PV.line, lineWidth: 1)
+                        )
+                }
+
+                if !statusMsg.isEmpty {
+                    Text(statusMsg)
+                        .font(PVFont.body(12))
+                        .foregroundStyle(isError ? PV.berry : PV.caramel)
+                        .padding(.horizontal, 4)
+                }
+
+                Spacer()
+
+                Button {
+                    Task { await doCreate() }
+                } label: {
+                    HStack {
+                        if isCreating { ProgressView().tint(.white) }
+                        else { Text("创建") }
+                    }
+                }
+                .buttonStyle(CButtonStyle(tone: PV.caramel, filled: true, height: 48))
+                .disabled(trimmedName.isEmpty || isCreating)
+                .opacity(trimmedName.isEmpty ? 0.5 : 1)
+            }
+            .padding(20)
+        }
+        .onAppear { focused = true }
+    }
+
+    private func doCreate() async {
+        guard !trimmedName.isEmpty else { return }
+        isCreating = true
+        statusMsg = ""
+        defer { isCreating = false }
+        do {
+            _ = try await api.createFolder(name: trimmedName, parentId: parentId)
+            await onCreated?()
+            dismiss()
+        } catch let error as APIError {
+            isError = true
+            if case .httpError(let code) = error, code == 409 {
+                statusMsg = "同名文件夹已存在"
+            } else {
+                statusMsg = "创建失败: \(error.localizedDescription)"
+            }
+        } catch {
+            isError = true
+            statusMsg = "创建失败: \(error.localizedDescription)"
+        }
     }
 }
 
@@ -641,15 +802,13 @@ private struct FolderDetailMenu: View {
     @Binding var showRenameAlert: Bool
     @Binding var showDeleteConfirm: Bool
     @Binding var showCreateFolder: Bool
-    @Binding var newFolderName: String
 
     var body: some View {
         Menu {
             Button {
-                newFolderName = ""
                 showCreateFolder = true
             } label: {
-                Label("新建文件夹", systemImage: "folder.badge.plus")
+                Label("新建子文件夹", systemImage: "folder.badge.plus")
             }
             Button {
                 renameText = folderName

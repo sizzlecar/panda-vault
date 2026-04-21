@@ -197,68 +197,130 @@ struct AssetDetailView: View {
         .padding(.top, 8)
     }
 
-    // MARK: - Video Bottom Bar
+    // MARK: - Video Bottom Bar (cream · 对应 cream.jsx 第 4 屏，深色版)
 
     private func videoBottomBar(_ asset: Asset) -> some View {
-        VStack(spacing: 8) {
-            // 视频信息行
-            HStack(spacing: 8) {
+        VStack(spacing: 10) {
+            // 文件信息行 — filename · size · duration（mono · 白 85%）
+            HStack(spacing: 10) {
+                Text(asset.filename)
+                    .font(PVFont.mono(11.5))
+                    .foregroundStyle(.white.opacity(0.85))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer(minLength: 8)
+                Text(asset.formattedSize)
+                    .font(PVFont.mono(11.5))
+                    .foregroundStyle(.white.opacity(0.85))
+                if let dur = asset.formattedDuration {
+                    Text(dur)
+                        .font(PVFont.mono(11.5))
+                        .foregroundStyle(.white.opacity(0.85))
+                }
+            }
+
+            // 时钟 + 日期 + 拍摄标 + index
+            HStack(spacing: 6) {
+                Image(systemName: "clock")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.white.opacity(0.6))
                 let date = asset.shootAt ?? asset.createdAt
                 Text(Self.dateFormatter.string(from: date))
-                if let dur = asset.formattedDuration { Text(dur) }
-                Text(asset.formattedSize)
+                    .font(PVFont.mono(11))
+                    .foregroundStyle(.white.opacity(0.6))
+                if asset.shootAt != nil {
+                    Text("拍摄")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.white.opacity(0.85))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 1)
+                        .background(Color.white.opacity(0.15))
+                        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                }
                 Spacer()
                 if assets.count > 1 {
                     Text("\(currentIndex + 1)/\(assets.count)")
+                        .font(PVFont.mono(11))
+                        .foregroundStyle(.white.opacity(0.6))
                 }
             }
-            .font(.system(.caption2, design: .monospaced))
-            .foregroundStyle(.white.opacity(0.7))
 
-            // 按钮行
-            HStack(spacing: 16) {
+            // 备注条（视频同样支持）
+            Button { showNoteEditor = true } label: {
+                noteStrip(asset)
+            }
+            .buttonStyle(.plain)
+
+            // 3 个 cream 动作按钮：保存 / 分享 / 移动
+            HStack(spacing: 10) {
+                Button { Task { await saveToPhotos(asset) } } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "square.and.arrow.down")
+                        Text("保存到相册")
+                    }
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 11)
+                    .background(.white.opacity(0.15), in: RoundedRectangle(cornerRadius: 10))
+                }
+
+                Button { Task { await shareAsset(asset) } } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "square.and.arrow.up")
+                        Text("分享")
+                    }
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 11)
+                    .background(.white.opacity(0.15), in: RoundedRectangle(cornerRadius: 10))
+                }
+
+                Button { showMovePicker = true } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "folder.badge.plus")
+                        Text("移动")
+                    }
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 11)
+                    .background(.white.opacity(0.15), in: RoundedRectangle(cornerRadius: 10))
+                }
+            }
+
+            // 次级操作：关闭 + 删除（视频没有顶部 overlay，要放这里）
+            HStack {
                 Button { dismiss() } label: {
-                    Image(systemName: "xmark")
-                        .font(.body.bold())
-                        .padding(10)
-                        .background(.ultraThinMaterial, in: Circle())
+                    HStack(spacing: 5) {
+                        Image(systemName: "xmark")
+                        Text("关闭")
+                    }
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.85))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 7)
+                    .background(Color.white.opacity(0.12), in: Capsule())
                 }
-
                 Spacer()
-
-            Button { Task { await saveToPhotos(asset) } } label: {
-                Image(systemName: "square.and.arrow.down")
-                    .font(.body)
-                    .padding(10)
-                    .background(.ultraThinMaterial, in: Circle())
-            }
-
-            Button { Task { await shareAsset(asset) } } label: {
-                Image(systemName: "square.and.arrow.up")
-                    .font(.body)
-                    .padding(10)
-                    .background(.ultraThinMaterial, in: Circle())
-            }
-
-            Button { showMovePicker = true } label: {
-                Image(systemName: "folder.badge.plus")
-                    .font(.body)
-                    .padding(10)
-                    .background(.ultraThinMaterial, in: Circle())
-            }
-
-            Button { showDeleteConfirm = true } label: {
-                Image(systemName: "trash")
-                    .font(.body)
-                    .foregroundStyle(.red)
-                    .padding(10)
-                    .background(.ultraThinMaterial, in: Circle())
+                Button { showDeleteConfirm = true } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "trash")
+                        Text("删除")
+                    }
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundStyle(Color(red: 1, green: 0.3, blue: 0.27))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 7)
+                    .background(Color.white.opacity(0.12), in: Capsule())
+                }
             }
         }
-        .foregroundStyle(.white)
-        .padding(.horizontal)
-        .padding(.bottom, 8)
-        }
+        .padding()
+        .padding(.bottom, 4)
+        .background(.ultraThinMaterial)
+        .environment(\.colorScheme, .dark)
     }
 
     // MARK: - Image Bottom Bar
@@ -468,18 +530,182 @@ struct MoveToFolderView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var isMoving = false
 
+    // 面包屑：[(name, id?)] nil 代表根目录
+    @State private var breadcrumbs: [(name: String, id: UUID?)] = [("根目录", nil)]
+    @State private var currentParentId: UUID? = nil
+    @State private var folders: [Folder] = []
+    @State private var isLoading = false
+
     var body: some View {
         NavigationStack {
-            MoveFolderLevel(api: api, parentId: nil, parentFolder: nil, pathPrefix: "/", assetIds: assetIds, isMoving: $isMoving) { folder in
-                Task { await moveToFolder(folder) }
+            ZStack {
+                PV.bg.ignoresSafeArea()
+                VStack(spacing: 0) {
+                    // 面包屑（cream · mono）
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(Array(breadcrumbs.enumerated()), id: \.offset) { idx, crumb in
+                                if idx > 0 {
+                                    Text("/").font(PVFont.mono(12)).foregroundStyle(PV.muted)
+                                }
+                                let last = idx == breadcrumbs.count - 1
+                                Button(crumb.name) {
+                                    breadcrumbs = Array(breadcrumbs.prefix(idx + 1))
+                                    currentParentId = crumb.id
+                                    Task { await loadFolders() }
+                                }
+                                .font(PVFont.mono(12, weight: last ? .medium : .regular))
+                                .foregroundStyle(last ? PV.caramel : PV.sub)
+                            }
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 10)
+                    }
+                    .background(Color.white.opacity(0.5))
+
+                    ScrollView {
+                        VStack(spacing: 14) {
+                            // "移动到此处" CTA（只在非根层显示 —— 根目录无法接收 asset）
+                            if currentParentId != nil {
+                                Button {
+                                    if let id = currentParentId,
+                                       let folder = Folder.lookup(in: breadcrumbs, id: id) ?? lastCrumbFolder() {
+                                        Task { await moveToFolder(folder) }
+                                    }
+                                } label: {
+                                    HStack(spacing: 12) {
+                                        ZStack {
+                                            Circle().fill(PV.caramel)
+                                            Image(systemName: "checkmark")
+                                                .font(.system(size: 12, weight: .bold))
+                                                .foregroundStyle(.white)
+                                        }
+                                        .frame(width: 26, height: 26)
+                                        Text("移动到此处")
+                                            .font(PVFont.body(14.5, weight: .semibold))
+                                            .foregroundStyle(PV.caramel)
+                                        Spacer()
+                                        if isMoving { ProgressView().tint(PV.caramel) }
+                                    }
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 14)
+                                    .background(Color.white)
+                                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                            .strokeBorder(PV.line, lineWidth: 1)
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(isMoving)
+                            }
+
+                            // 子文件夹 — 整行点击下钻
+                            if !folders.isEmpty {
+                                VStack(spacing: 0) {
+                                    ForEach(Array(folders.enumerated()), id: \.element.id) { idx, folder in
+                                        Button {
+                                            breadcrumbs.append((folder.name, folder.id))
+                                            currentParentId = folder.id
+                                            Task { await loadFolders() }
+                                        } label: {
+                                            HStack(spacing: 11) {
+                                                Image(systemName: "folder.fill")
+                                                    .font(.system(size: 17))
+                                                    .foregroundStyle(PV.caramel)
+                                                VStack(alignment: .leading, spacing: 2) {
+                                                    Text(folder.name)
+                                                        .font(PVFont.body(14))
+                                                        .foregroundStyle(PV.ink)
+                                                    if let count = folder.assetCount, count > 0 {
+                                                        Text("\(count) 项")
+                                                            .font(PVFont.mono(10.5))
+                                                            .foregroundStyle(PV.muted)
+                                                    }
+                                                }
+                                                Spacer()
+                                                Image(systemName: "chevron.right")
+                                                    .font(.system(size: 11, weight: .semibold))
+                                                    .foregroundStyle(PV.muted)
+                                            }
+                                            .padding(.horizontal, 16)
+                                            .padding(.vertical, 13)
+                                            .overlay(alignment: .bottom) {
+                                                if idx < folders.count - 1 {
+                                                    Rectangle()
+                                                        .fill(PV.divider)
+                                                        .frame(height: 0.5)
+                                                        .padding(.leading, 46)
+                                                }
+                                            }
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+                                .background(Color.white)
+                                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                        .strokeBorder(PV.line, lineWidth: 1)
+                                )
+                            } else if !isLoading {
+                                VStack(spacing: 10) {
+                                    Image(systemName: "folder.badge.questionmark")
+                                        .font(.system(size: 24))
+                                        .foregroundStyle(PV.muted)
+                                    Text(currentParentId == nil ? "先选一个文件夹再移动" : "这一层没有子文件夹")
+                                        .font(PVFont.body(13))
+                                        .foregroundStyle(PV.sub)
+                                }
+                                .padding(.vertical, 40)
+                            }
+
+                            if isLoading {
+                                ProgressView().tint(PV.caramel).padding()
+                            }
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 14)
+                    }
+                }
             }
             .navigationTitle("移动到文件夹")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(PV.bg, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("取消") { dismiss() }
                 }
             }
+            .task { await loadFolders() }
+        }
+    }
+
+    private func lastCrumbFolder() -> Folder? {
+        guard breadcrumbs.count > 1,
+              let id = breadcrumbs.last?.id else { return nil }
+        return Folder(
+            id: id,
+            name: breadcrumbs.last?.name ?? "",
+            fsName: nil,
+            fsPath: nil,
+            parentId: nil,
+            coverThumbPath: nil,
+            assetCount: nil,
+            createdAt: nil,
+            updatedAt: nil,
+            totalBytes: nil
+        )
+    }
+
+    private func loadFolders() async {
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            folders = try await api.getFolders(parentId: currentParentId)
+        } catch {
+            print("[PandaVault] Load folders error: \(error)")
         }
     }
 
@@ -500,94 +726,21 @@ struct MoveToFolderView: View {
     }
 }
 
-// MARK: - Move Folder Level (hierarchical)
-
-private struct MoveFolderLevel: View {
-    let api: APIService
-    let parentId: UUID?
-    let parentFolder: Folder?
-    let pathPrefix: String
-    let assetIds: [UUID]
-    @Binding var isMoving: Bool
-    let onSelect: (Folder) -> Void
-
-    @State private var folders: [Folder] = []
-    @State private var isLoading = false
-    @State private var drillFolder: Folder?
-
-    var body: some View {
-        List {
-            if let parentFolder {
-                Button {
-                    onSelect(parentFolder)
-                } label: {
-                    HStack {
-                        Image(systemName: "checkmark.circle.fill").foregroundStyle(PV.cyan)
-                        Text("移动到此处").foregroundStyle(PV.cyan).fontWeight(.medium)
-                        Spacer()
-                        if isMoving { ProgressView().tint(PV.cyan) }
-                    }
-                }
-                .disabled(isMoving)
-            }
-
-            if isLoading {
-                HStack { Spacer(); ProgressView().tint(PV.cyan); Spacer() }
-            }
-
-            ForEach(folders) { folder in
-                HStack {
-                    Button {
-                        onSelect(folder)
-                    } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: "folder.fill").foregroundStyle(PV.cyan)
-                            Text(folder.name).foregroundStyle(.primary)
-                            if let count = folder.assetCount, count > 0 {
-                                Text("\(count)")
-                                    .font(.caption2)
-                                    .foregroundStyle(.tertiary)
-                            }
-                        }
-                    }
-                    .buttonStyle(.borderless)
-                    .disabled(isMoving)
-
-                    Spacer()
-
-                    Button {
-                        drillFolder = folder
-                    } label: {
-                        Image(systemName: "chevron.right")
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                    }
-                    .buttonStyle(.borderless)
-                    .frame(width: 30)
-                }
-            }
-        }
-        .navigationDestination(item: $drillFolder) { folder in
-            MoveFolderLevel(
-                api: api,
-                parentId: folder.id,
-                parentFolder: folder,
-                pathPrefix: "\(pathPrefix)\(folder.name)/",
-                assetIds: assetIds,
-                isMoving: $isMoving,
-                onSelect: onSelect
-            )
-            .navigationTitle(folder.name)
-        }
-        .task {
-            isLoading = true
-            defer { isLoading = false }
-            do {
-                folders = try await api.getFolders(parentId: parentId)
-            } catch {
-                print("[PandaVault] Load folders error: \(error)")
-            }
-        }
+private extension Folder {
+    static func lookup(in crumbs: [(name: String, id: UUID?)], id: UUID) -> Folder? {
+        guard let crumb = crumbs.last(where: { $0.id == id }), let cid = crumb.id else { return nil }
+        return Folder(
+            id: cid,
+            name: crumb.name,
+            fsName: nil,
+            fsPath: nil,
+            parentId: nil,
+            coverThumbPath: nil,
+            assetCount: nil,
+            createdAt: nil,
+            updatedAt: nil,
+            totalBytes: nil
+        )
     }
 }
 

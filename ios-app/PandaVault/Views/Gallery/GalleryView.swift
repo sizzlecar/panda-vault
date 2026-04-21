@@ -21,6 +21,7 @@ struct GalleryView: View {
     @State private var shareProgress = ""
     @State private var imageSearchItem: PhotosPickerItem?
     @State private var isImageSearching = false
+    @State private var showExport = false
 
     init() {
         _vm = StateObject(wrappedValue: GalleryViewModel(api: APIService(baseURL: "")))
@@ -94,9 +95,13 @@ struct GalleryView: View {
                         showDeleteConfirm: $showDeleteConfirm,
                         showBatchMove: $showBatchMove,
                         onSave: { batchSaveToPhotos() },
-                        onShare: { Task { await batchShare() } }
+                        onShare: { Task { await batchShare() } },
+                        onExport: { showExport = true }
                     )
                 }
+            }
+            .sheet(isPresented: $showExport) {
+                ExportSheet(api: appState.api, assetIds: Array(selectedIds))
             }
             .onChange(of: isSelecting) { _, newValue in
                 appState.tabBarHidden = newValue && !selectedIds.isEmpty
@@ -458,61 +463,48 @@ private struct GalleryTimelineView: View {
                 .padding(.vertical, 8)
                 .background(PV.cyan.opacity(0.08))
             }
-            // 月份快速跳转栏：年 + 月 两行
+            // 月份快速跳转栏：年 + 月 两行（cream CChip — 焦糖选中）
             if !vm.timeline.isEmpty && vm.searchText.isEmpty && !vm.isImageSearchResult {
-                VStack(spacing: 4) {
-                    // 年行
+                VStack(spacing: 6) {
                     if years.count > 1 {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 6) {
                                 ForEach(years, id: \.self) { y in
-                                    let active = effectiveYear == y
                                     Button {
                                         lastManualTap = Date()
                                         selectedYear = y
-                                        // 切换年时滚动到该年最新月份
                                         if let first = vm.timeline.first(where: { $0.month.hasPrefix(y) }) {
                                             activeMonth = first.month
                                             scrollTarget = first.month
                                         }
                                     } label: {
-                                        Text(y + "年")
-                                            .font(.system(.caption2, design: .monospaced).bold())
-                                            .padding(.horizontal, 10)
-                                            .padding(.vertical, 5)
-                                            .background(active ? PV.cyan : PV.cyan.opacity(0.08), in: Capsule())
-                                            .foregroundStyle(active ? .white : PV.cyan)
+                                        CChip(text: y + "年", active: effectiveYear == y, mono: true)
                                     }
+                                    .buttonStyle(.plain)
                                 }
                             }
-                            .padding(.horizontal)
+                            .padding(.horizontal, 20)
                         }
                     }
-                    // 月份行（根据所选年过滤）
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 6) {
                             ForEach(monthsOfSelectedYear) { group in
-                                let active = activeMonth == group.month
                                 Button {
                                     lastManualTap = Date()
                                     activeMonth = group.month
                                     selectedYear = String(group.month.prefix(4))
                                     scrollTarget = group.month
                                 } label: {
-                                    Text(shortMonthOnly(group.month))
-                                        .font(.system(.caption2, design: .monospaced).bold())
-                                        .padding(.horizontal, 10)
-                                        .padding(.vertical, 5)
-                                        .background(active ? PV.cyan : PV.cyan.opacity(0.1), in: Capsule())
-                                        .foregroundStyle(active ? .white : PV.cyan)
+                                    CChip(text: shortMonthOnly(group.month), active: activeMonth == group.month, mono: true)
                                 }
+                                .buttonStyle(.plain)
                             }
                         }
-                        .padding(.horizontal)
+                        .padding(.horizontal, 20)
                     }
                 }
                 .padding(.vertical, 6)
-                .background(Color(.systemBackground))
+                .background(PV.bg)
             }
 
             ScrollViewReader { proxy in
@@ -1038,6 +1030,8 @@ struct FloatingBatchBar: View {
     @Binding var showBatchMove: Bool
     let onSave: () -> Void
     let onShare: () -> Void
+    /// 可选 —— 有就显示末端"⋯"溢出菜单，点 "导出工程包" 触发
+    var onExport: (() -> Void)? = nil
 
     var body: some View {
         VStack(spacing: 0) {
@@ -1051,6 +1045,23 @@ struct FloatingBatchBar: View {
                 barBtn(icon: "folder.badge.plus",     label: "移动", tone: PV.caramel) { showBatchMove = true }
                 barBtn(icon: "square.and.arrow.up",   label: "分享", tone: PV.caramel, action: onShare)
                 barBtn(icon: "trash",                 label: "删除", tone: PV.berry)  { showDeleteConfirm = true }
+                if let onExport {
+                    Menu {
+                        Button {
+                            onExport()
+                        } label: {
+                            Label("导出剪辑工程包", systemImage: "shippingbox")
+                        }
+                    } label: {
+                        VStack(spacing: 3) {
+                            Image(systemName: "ellipsis").font(.system(size: 18))
+                            Text("更多").font(PVFont.body(11, weight: .medium))
+                        }
+                        .foregroundStyle(PV.sub)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 2)
+                    }
+                }
             }
             .padding(.vertical, 8)
         }

@@ -115,11 +115,46 @@ enum PhotoLibraryService {
 enum PhotoError: LocalizedError {
     case permissionDenied
     case exportFailed
+    case userCancelled
 
     var errorDescription: String? {
         switch self {
         case .permissionDenied: return "需要相册访问权限"
         case .exportFailed: return "导出文件失败"
+        case .userCancelled: return "用户取消了删除"
+        }
+    }
+}
+
+extension PhotoLibraryService {
+    /// 删除相册里对应 localIdentifier 的原图
+    /// —— 系统会自动弹原生确认框，不用我们再自绘一层
+    /// - Returns: 实际删除成功的条数（cancelled 时为 0）
+    static func deleteOriginals(localIdentifiers: [String]) async throws -> Int {
+        guard !localIdentifiers.isEmpty else { return 0 }
+
+        let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+        guard status == .authorized || status == .limited else {
+            throw PhotoError.permissionDenied
+        }
+
+        let fetch = PHAsset.fetchAssets(withLocalIdentifiers: localIdentifiers, options: nil)
+        guard fetch.count > 0 else { return 0 }
+
+        var toDelete: [PHAsset] = []
+        fetch.enumerateObjects { asset, _, _ in toDelete.append(asset) }
+
+        do {
+            try await PHPhotoLibrary.shared().performChanges {
+                PHAssetChangeRequest.deleteAssets(toDelete as NSArray)
+            }
+            return toDelete.count
+        } catch let err as NSError {
+            // 用户点了系统弹窗的"取消"也走到这里 — domain=Cocoa code=3072
+            if err.domain == NSCocoaErrorDomain && err.code == 3072 {
+                throw PhotoError.userCancelled
+            }
+            throw err
         }
     }
 }
