@@ -170,22 +170,23 @@ struct MainTabView: View {
     @State private var selectedTab: MainTab = .library
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            // 内容区
-            Group {
-                switch selectedTab {
-                case .library:  GalleryView()
-                case .upload:   UploadView()
-                case .settings: SettingsView()
-                }
+        Group {
+            switch selectedTab {
+            case .library:  GalleryView()
+            case .upload:   UploadView()
+            case .settings: SettingsView()
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(PV.bg.ignoresSafeArea())
-
-            // 浮动 tab bar
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(PV.bg.ignoresSafeArea())
+        // Tab bar 用 safeAreaInset，让每个屏幕的 .safeAreaInset(.bottom)
+        // （例如批量操作工具栏）能自动堆叠在它上面，不会重合
+        .safeAreaInset(edge: .bottom, spacing: 0) {
             CTabBar(selected: $selectedTab)
                 .padding(.horizontal, 16)
-                .padding(.bottom, 10)
+                .padding(.top, 4)
+                .padding(.bottom, 6)
+                .background(PV.bg)
         }
     }
 }

@@ -36,7 +36,10 @@ struct GalleryView: View {
                 selectedIds: $selectedIds,
                 selectedAsset: $selectedAsset,
                 selectedFolder: $selectedFolder,
-                imageSearchItem: $imageSearchItem
+                imageSearchItem: $imageSearchItem,
+                onRecentFolderTap: { folder in
+                    selectedFolder = folder
+                }
             )
             .background(PV.bg.ignoresSafeArea())
             .scrollContentBackground(.hidden)
@@ -249,6 +252,7 @@ private struct GalleryContentView: View {
     @Binding var selectedAsset: Asset?
     @Binding var selectedFolder: Folder?
     @Binding var imageSearchItem: PhotosPickerItem?
+    var onRecentFolderTap: (Folder) -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -314,7 +318,8 @@ private struct GalleryContentView: View {
                     api: appState.api,
                     isSelecting: $isSelecting,
                     selectedIds: $selectedIds,
-                    selectedAsset: $selectedAsset
+                    selectedAsset: $selectedAsset,
+                    onRecentFolderTap: onRecentFolderTap
                 )
             case .folders:
                 GalleryFoldersView(
@@ -367,6 +372,7 @@ private struct GalleryTimelineView: View {
     @Binding var isSelecting: Bool
     @Binding var selectedIds: Set<UUID>
     @Binding var selectedAsset: Asset?
+    var onRecentFolderTap: (Folder) -> Void
 
     @Namespace private var scrollSpace
     @State private var scrollTarget: String?
@@ -408,7 +414,7 @@ private struct GalleryTimelineView: View {
                     .padding(.top, 2)
                     .padding(.bottom, 10)
                 if !vm.recentFolders.isEmpty {
-                    RecentFoldersCarousel(folders: vm.recentFolders, api: api)
+                    RecentFoldersCarousel(folders: vm.recentFolders, api: api, onTap: onRecentFolderTap)
                         .padding(.bottom, 6)
                 }
             }
@@ -876,6 +882,7 @@ struct PandaGreeting: View {
 struct RecentFoldersCarousel: View {
     let folders: [Folder]
     let api: APIService
+    var onTap: (Folder) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -891,7 +898,10 @@ struct RecentFoldersCarousel: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
                     ForEach(folders) { f in
-                        RecentFolderCard(folder: f, api: api)
+                        Button { onTap(f) } label: {
+                            RecentFolderCard(folder: f, api: api)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
                 .padding(.horizontal, 20)

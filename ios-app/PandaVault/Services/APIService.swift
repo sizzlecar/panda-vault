@@ -344,12 +344,12 @@ final class APIService: Sendable {
 
     func thumbnailURL(for asset: Asset) -> URL? {
         guard let path = asset.thumbPath else { return nil }
-        return URL(string: "\(baseURL)\(path)")
+        return buildURL(path: path)
     }
 
     func proxyURL(for asset: Asset) -> URL? {
         guard let path = asset.proxyPath else { return nil }
-        return URL(string: "\(baseURL)\(path)")
+        return buildURL(path: path)
     }
 
     func downloadURL(for asset: Asset) -> URL? {
@@ -358,13 +358,29 @@ final class APIService: Sendable {
 
     /// 原始文件直接访问（支持 Range 请求，用于视频流式播放）
     func rawURL(for asset: Asset) -> URL? {
-        let path = asset.filePath.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? asset.filePath
-        return URL(string: "\(baseURL)\(path)")
+        buildURL(path: asset.filePath)
+    }
+
+    /// 统一 URL 构造：正确处理中文/特殊字符的 path 编码
+    /// 之前用 `addingPercentEncoding(.urlPathAllowed)` 在某些 iOS 版本对中文
+    /// 编码不一致（导致详情页图片 404 黑屏）。改用 URLComponents。
+    private func buildURL(path: String) -> URL? {
+        // 优先 URLComponents（按 RFC 3986 自动逐段转义）
+        if var comps = URLComponents(string: baseURL) {
+            comps.path = comps.path + path
+            if let url = comps.url { return url }
+        }
+        // fallback: 每个 segment 单独 encoding 再拼回
+        let segments = path.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+        let encoded = segments.map {
+            $0.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? $0
+        }.joined(separator: "/")
+        return URL(string: "\(baseURL)\(encoded)")
     }
 
     func folderCoverURL(for folder: Folder) -> URL? {
         guard let path = folder.coverThumbPath, !path.isEmpty else { return nil }
-        return URL(string: "\(baseURL)\(path)")
+        return buildURL(path: path)
     }
 
     // MARK: - Private
