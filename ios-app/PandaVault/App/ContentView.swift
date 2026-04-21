@@ -185,6 +185,9 @@ struct MainTabView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(PV.bg.ignoresSafeArea())
+        .onChange(of: selectedTab) { old, new in
+            PVLog.perf("Tab 切换 \(old)→\(new)")
+        }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             // 批量选择态下隐藏 CTabBar，让 FloatingBatchBar 占底部
             if !appState.tabBarHidden {

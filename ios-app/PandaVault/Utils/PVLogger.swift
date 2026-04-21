@@ -77,6 +77,28 @@ enum PVLog {
         LogReporter.shared.enqueue(level: "ERROR", category: "Download", location: "\(file):\(line)", message: msg)
     }
 
+    /// 测量一段交互到主线程空闲的耗时（ms）
+    /// 原理：调用点采样 t0，DispatchQueue.main.async 排到当前 runloop 末尾
+    /// 再采样 t1，差值就是当前主线程 busy 时间 —— 若 hang 就显著
+    /// > 100ms 自动升级为 WARN，方便快速过滤"卡顿事件"
+    static func perf(_ label: String, file: String = #fileID, line: Int = #line) {
+        let t0 = Date()
+        let f = file, l = line, lbl = label
+        DispatchQueue.main.async {
+            let ms = Int(Date().timeIntervalSince(t0) * 1000)
+            let msg = "\(lbl) \(ms)ms"
+            if ms > 100 {
+                logger.error("[\(f, privacy: .public):\(l, privacy: .public)] PERF ⚠️ \(msg, privacy: .public)")
+                fileLog.append(level: "WARN", category: "Perf", loc: "\(f):\(l)", msg: msg)
+                LogReporter.shared.enqueue(level: "WARN", category: "Perf", location: "\(f):\(l)", message: msg)
+            } else {
+                logger.notice("[\(f, privacy: .public):\(l, privacy: .public)] PERF \(msg, privacy: .public)")
+                fileLog.append(level: "INFO", category: "Perf", loc: "\(f):\(l)", msg: msg)
+                LogReporter.shared.enqueue(level: "INFO", category: "Perf", location: "\(f):\(l)", message: msg)
+            }
+        }
+    }
+
     /// 记录 App 生命周期
     static func lifecycle(_ msg: String, file: String = #fileID, line: Int = #line) {
         logger.notice("[\(file, privacy: .public):\(line, privacy: .public)] LIFECYCLE \(msg, privacy: .public)")

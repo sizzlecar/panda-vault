@@ -5,6 +5,9 @@ struct AssetDetailView: View {
     let initialAsset: Asset
     let api: APIService
     var onDelete: (() -> Void)?
+    /// 单个资产字段被修改（重命名 / 备注等）后回调，父视图用来同步缓存
+    /// —— 避免详情页关闭后再打开看到旧数据
+    var onAssetUpdated: ((Asset) -> Void)?
 
     @Environment(\.dismiss) private var dismiss
     @State private var assets: [Asset]
@@ -20,10 +23,17 @@ struct AssetDetailView: View {
     @State private var moveMessage = ""
     @State private var showNoteEditor = false
 
-    init(assets: [Asset], initialAsset: Asset, api: APIService, onDelete: (() -> Void)? = nil) {
+    init(
+        assets: [Asset],
+        initialAsset: Asset,
+        api: APIService,
+        onDelete: (() -> Void)? = nil,
+        onAssetUpdated: ((Asset) -> Void)? = nil
+    ) {
         self.initialAsset = initialAsset
         self.api = api
         self.onDelete = onDelete
+        self.onAssetUpdated = onAssetUpdated
         _assets = State(initialValue: assets)
         _currentIndex = State(initialValue: max(0, assets.firstIndex(of: initialAsset) ?? 0))
     }
@@ -149,6 +159,7 @@ struct AssetDetailView: View {
             if let asset = current {
                 NoteEditorSheet(asset: asset, api: api) { updated in
                     assets[currentIndex] = updated
+                    onAssetUpdated?(updated) // 同步父视图缓存，避免关闭后重打开丢失 note
                 }
             }
         }

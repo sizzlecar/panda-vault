@@ -59,11 +59,18 @@ struct GalleryView: View {
                 let source = (!vm.searchText.isEmpty || vm.isImageSearchResult)
                     ? vm.assets
                     : vm.allAssetsOrdered
-                AssetDetailView(assets: source, initialAsset: asset, api: appState.api) {
-                    Task {
-                        await vm.loadTimelineAndAssets()
+                AssetDetailView(
+                    assets: source,
+                    initialAsset: asset,
+                    api: appState.api,
+                    onDelete: {
+                        Task { await vm.loadTimelineAndAssets() }
+                    },
+                    onAssetUpdated: { updated in
+                        vm.replaceAsset(updated)
                     }
-                }
+                )
+                .onAppear { PVLog.perf("打开素材详情") }
             }
             .navigationDestination(item: $selectedFolder) { folder in
                 FolderDetailView(folder: folder, api: appState.api)
@@ -296,6 +303,7 @@ private struct GalleryContentView: View {
                     }
                 }
                 Button {
+                    PVLog.perf("Tap \(isSelecting ? "完成" : "选择")")
                     isSelecting.toggle()
                     if !isSelecting { selectedIds.removeAll() }
                 } label: {

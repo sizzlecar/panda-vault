@@ -127,6 +127,22 @@ final class GalleryViewModel: ObservableObject {
         monthlyAssets[month] ?? []
     }
 
+    /// 详情页修改了某个 asset（重命名/备注）后，同步更新本地缓存
+    /// —— 否则关闭详情页重打开会看到旧数据
+    func replaceAsset(_ asset: Asset) {
+        // 时间线月份缓存
+        for month in monthlyAssets.keys {
+            if let idx = monthlyAssets[month]?.firstIndex(where: { $0.id == asset.id }) {
+                monthlyAssets[month]?[idx] = asset
+            }
+        }
+        // 搜索 / 文件夹 fallback 用的 assets 列表
+        if let idx = assets.firstIndex(where: { $0.id == asset.id }) {
+            assets[idx] = asset
+        }
+        objectWillChange.send()
+    }
+
     func isMonthLoading(_ month: String) -> Bool {
         monthLoadingStates[month] == .loading
     }

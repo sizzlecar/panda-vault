@@ -174,9 +174,22 @@ struct FolderDetailView: View {
             }
         }
         .fullScreenCover(item: $selectedAsset) { asset in
-            AssetDetailView(assets: displayedAssets, initialAsset: asset, api: api) {
-                Task { await loadFolderAssets() }
-            }
+            AssetDetailView(
+                assets: displayedAssets,
+                initialAsset: asset,
+                api: api,
+                onDelete: {
+                    Task { await loadFolderAssets() }
+                },
+                onAssetUpdated: { updated in
+                    if let idx = assets.firstIndex(where: { $0.id == updated.id }) {
+                        assets[idx] = updated
+                    }
+                    if let idx = displayedAssets.firstIndex(where: { $0.id == updated.id }) {
+                        displayedAssets[idx] = updated
+                    }
+                }
+            )
         }
         .safeAreaInset(edge: .bottom) {
             GalleryBottomInset(
