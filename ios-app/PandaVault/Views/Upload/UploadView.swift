@@ -348,65 +348,131 @@ struct FolderPickerView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                // 面包屑路径
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 4) {
-                        ForEach(Array(breadcrumbs.enumerated()), id: \.offset) { idx, crumb in
-                            if idx > 0 { Text("/").font(.caption2).foregroundStyle(.tertiary) }
-                            Button(crumb.name) {
-                                // 跳回到这一层
-                                breadcrumbs = Array(breadcrumbs.prefix(idx + 1))
-                                currentParentId = crumb.id
-                                Task { await loadFolders() }
-                            }
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(idx == breadcrumbs.count - 1 ? PV.cyan : .secondary)
-                        }
-                    }
-                    .padding(.horizontal)
-                    .padding(.vertical, 8)
-                }
-                .background(Color(.secondarySystemGroupedBackground))
-
-                List {
-                    // 选当前层
-                    Button {
-                        selectedFolderId = currentParentId
-                        selectedFolderPath = currentPath
-                        dismiss(); onDismiss?()
-                    } label: {
-                        HStack {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(PV.cyan)
-                            Text("选择此文件夹")
-                                .foregroundStyle(PV.cyan)
-                                .fontWeight(.medium)
-                        }
-                    }
-
-                    if isLoading {
-                        HStack { Spacer(); ProgressView().tint(PV.cyan); Spacer() }
-                    }
-
-                    ForEach(folders) { folder in
-                        Button {
-                            breadcrumbs.append((folder.name, folder.id))
-                            currentParentId = folder.id
-                            Task { await loadFolders() }
-                        } label: {
-                            HStack {
-                                Image(systemName: "folder.fill").foregroundStyle(PV.cyan)
-                                Text(folder.name).foregroundStyle(.primary)
-                                Spacer()
-                                Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
+            ZStack {
+                PV.bg.ignoresSafeArea()
+                VStack(spacing: 0) {
+                    // 面包屑路径（cream 风格 · JetBrainsMono）
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(Array(breadcrumbs.enumerated()), id: \.offset) { idx, crumb in
+                                if idx > 0 {
+                                    Text("/")
+                                        .font(PVFont.mono(12))
+                                        .foregroundStyle(PV.muted)
+                                }
+                                let last = idx == breadcrumbs.count - 1
+                                Button(crumb.name) {
+                                    breadcrumbs = Array(breadcrumbs.prefix(idx + 1))
+                                    currentParentId = crumb.id
+                                    Task { await loadFolders() }
+                                }
+                                .font(PVFont.mono(12, weight: last ? .medium : .regular))
+                                .foregroundStyle(last ? PV.caramel : PV.sub)
                             }
                         }
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 10)
+                    }
+                    .background(Color.white.opacity(0.5))
+
+                    ScrollView {
+                        VStack(spacing: 14) {
+                            // "选择此文件夹" —— 焦糖填充大按钮
+                            Button {
+                                selectedFolderId = currentParentId
+                                selectedFolderPath = currentPath
+                                dismiss(); onDismiss?()
+                            } label: {
+                                HStack(spacing: 12) {
+                                    ZStack {
+                                        Circle().fill(PV.caramel)
+                                        Image(systemName: "checkmark")
+                                            .font(.system(size: 12, weight: .bold))
+                                            .foregroundStyle(.white)
+                                    }
+                                    .frame(width: 26, height: 26)
+                                    Text("选择此文件夹")
+                                        .font(PVFont.body(14.5, weight: .semibold))
+                                        .foregroundStyle(PV.caramel)
+                                    Spacer()
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 14)
+                                .background(Color.white)
+                                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                        .strokeBorder(PV.line, lineWidth: 1)
+                                )
+                            }
+                            .buttonStyle(.plain)
+
+                            // 子文件夹列表
+                            if !folders.isEmpty {
+                                VStack(spacing: 0) {
+                                    ForEach(Array(folders.enumerated()), id: \.element.id) { idx, folder in
+                                        Button {
+                                            breadcrumbs.append((folder.name, folder.id))
+                                            currentParentId = folder.id
+                                            Task { await loadFolders() }
+                                        } label: {
+                                            HStack(spacing: 11) {
+                                                Image(systemName: "folder")
+                                                    .font(.system(size: 17))
+                                                    .foregroundStyle(PV.caramel)
+                                                Text(folder.name)
+                                                    .font(PVFont.body(14))
+                                                    .foregroundStyle(PV.ink)
+                                                Spacer()
+                                                Image(systemName: "chevron.right")
+                                                    .font(.system(size: 11, weight: .semibold))
+                                                    .foregroundStyle(PV.muted)
+                                            }
+                                            .padding(.horizontal, 16)
+                                            .padding(.vertical, 13)
+                                            .overlay(alignment: .bottom) {
+                                                if idx < folders.count - 1 {
+                                                    Rectangle()
+                                                        .fill(PV.divider)
+                                                        .frame(height: 0.5)
+                                                        .padding(.leading, 46)
+                                                }
+                                            }
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+                                .background(Color.white)
+                                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                        .strokeBorder(PV.line, lineWidth: 1)
+                                )
+                            } else if !isLoading {
+                                VStack(spacing: 10) {
+                                    Image(systemName: "folder.badge.questionmark")
+                                        .font(.system(size: 24))
+                                        .foregroundStyle(PV.muted)
+                                    Text("这一层没有子文件夹")
+                                        .font(PVFont.body(13))
+                                        .foregroundStyle(PV.sub)
+                                }
+                                .padding(.vertical, 40)
+                            }
+
+                            if isLoading {
+                                ProgressView().tint(PV.caramel).padding()
+                            }
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 14)
                     }
                 }
             }
             .navigationTitle("选择文件夹")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(PV.bg, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("取消") { dismiss(); onDismiss?() }
