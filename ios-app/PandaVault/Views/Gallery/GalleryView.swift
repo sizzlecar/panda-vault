@@ -79,6 +79,18 @@ struct GalleryView: View {
                     onShare: { Task { await batchShare() } }
                 )
             }
+            // 批量工具栏单独 overlay — 避免 NavigationStack 吞 safeAreaInset 导致被 Tab Bar 盖住
+            .overlay(alignment: .bottom) {
+                if isSelecting && !selectedIds.isEmpty {
+                    FloatingBatchBar(
+                        count: selectedIds.count,
+                        showDeleteConfirm: $showDeleteConfirm,
+                        showBatchMove: $showBatchMove,
+                        onSave: { batchSaveToPhotos() },
+                        onShare: { Task { await batchShare() } }
+                    )
+                }
+            }
             .confirmationDialog(
                 "确定删除 \(selectedIds.count) 个素材？",
                 isPresented: $showDeleteConfirm,
@@ -991,20 +1003,61 @@ struct GalleryBottomInset: View {
     let onSave: () -> Void
     let onShare: () -> Void
 
+    // 只放下载进度条（轻量，用 safeAreaInset 合适）。
+    // 批量工具栏已经挪到调用方的 .overlay(.bottom)，避开 NavigationStack 吞掉 safeAreaInset 的问题
+    var body: some View {
+        if !appState.downloadManager.tasks.isEmpty {
+            GalleryDownloadProgress(dm: appState.downloadManager)
+        }
+    }
+}
+
+/// 供 GalleryView/FolderDetailView 等用 .overlay(alignment: .bottom) 浮在底部；
+/// 它会被 MainTabView 的 CTabBar 往上顶（因为 NavigationStack 的 content 区
+/// 就止于 CTabBar 顶边），所以不会重合
+struct FloatingBatchBar: View {
+    let count: Int
+    @Binding var showDeleteConfirm: Bool
+    @Binding var showBatchMove: Bool
+    let onSave: () -> Void
+    let onShare: () -> Void
+
     var body: some View {
         VStack(spacing: 0) {
-            if !appState.downloadManager.tasks.isEmpty {
-                GalleryDownloadProgress(dm: appState.downloadManager)
+            Text("已选 \(count) 项")
+                .font(PVFont.body(10.5, weight: .semibold))
+                .foregroundStyle(PV.sub)
+                .padding(.top, 10)
+
+            HStack(spacing: 0) {
+                barBtn(icon: "square.and.arrow.down", label: "保存", tone: PV.caramel, action: onSave)
+                barBtn(icon: "folder.badge.plus",     label: "移动", tone: PV.caramel) { showBatchMove = true }
+                barBtn(icon: "square.and.arrow.up",   label: "分享", tone: PV.caramel, action: onShare)
+                barBtn(icon: "trash",                 label: "删除", tone: PV.berry)  { showDeleteConfirm = true }
             }
-            if isSelecting && !selectedIds.isEmpty {
-                GalleryBatchToolbar(
-                    count: selectedIds.count,
-                    showDeleteConfirm: $showDeleteConfirm,
-                    showBatchMove: $showBatchMove,
-                    onSave: onSave,
-                    onShare: onShare
-                )
+            .padding(.vertical, 8)
+        }
+        .frame(maxWidth: .infinity)
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(PV.line, lineWidth: 1)
+        )
+        .shadow(color: PV.bean.opacity(0.14), radius: 14, y: 4)
+        .padding(.horizontal, 16)
+        .padding(.bottom, 6)
+    }
+
+    private func barBtn(icon: String, label: String, tone: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 3) {
+                Image(systemName: icon).font(.system(size: 18))
+                Text(label).font(PVFont.body(11, weight: .medium))
             }
+            .foregroundStyle(tone)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 2)
         }
     }
 }

@@ -30,9 +30,9 @@ struct TrashView: View {
         .toolbarBackground(.visible, for: .navigationBar)
         .navigationTitle("最近删除")
         .toolbar { trashToolbar }
-        .safeAreaInset(edge: .bottom) {
+        .overlay(alignment: .bottom) {
             if isSelecting && !selectedIds.isEmpty {
-                bottomBar
+                trashBottomBar
             }
         }
         .confirmationDialog(
@@ -130,47 +130,55 @@ struct TrashView: View {
         }
     }
 
-    // MARK: - Bottom Bar
+    // MARK: - Bottom Bar (cream 浮动白卡)
 
-    private var bottomBar: some View {
+    private var trashBottomBar: some View {
         VStack(spacing: 0) {
-            Divider()
             Text("已选 \(selectedIds.count) 项")
-                .font(.system(.caption2, design: .monospaced).bold())
-                .foregroundStyle(.secondary)
-                .padding(.top, 8)
+                .font(PVFont.body(10.5, weight: .semibold))
+                .foregroundStyle(PV.sub)
+                .padding(.top, 10)
 
             HStack(spacing: 0) {
                 Button { Task { await restoreSelected() } } label: {
-                    VStack(spacing: 4) {
-                        Image(systemName: "arrow.uturn.backward").font(.title3)
-                        Text("恢复").font(.system(.caption2, design: .monospaced))
+                    VStack(spacing: 3) {
+                        Image(systemName: "arrow.uturn.backward").font(.system(size: 18))
+                        Text("恢复").font(PVFont.body(11, weight: .medium))
                     }
                     .frame(maxWidth: .infinity)
-                    .foregroundStyle(PV.cyan)
+                    .foregroundStyle(PV.caramel)
                 }
 
                 Button { showDeleteConfirm = true } label: {
-                    VStack(spacing: 4) {
-                        Image(systemName: "trash.slash").font(.title3)
-                        Text("永久删除").font(.system(.caption2, design: .monospaced))
+                    VStack(spacing: 3) {
+                        Image(systemName: "trash.slash").font(.system(size: 18))
+                        Text("永久删除").font(PVFont.body(11, weight: .medium))
                     }
                     .frame(maxWidth: .infinity)
-                    .foregroundStyle(PV.pink)
+                    .foregroundStyle(PV.berry)
                 }
 
                 Button { showEmptyConfirm = true } label: {
-                    VStack(spacing: 4) {
-                        Image(systemName: "trash").font(.title3)
-                        Text("清空").font(.system(.caption2, design: .monospaced))
+                    VStack(spacing: 3) {
+                        Image(systemName: "trash").font(.system(size: 18))
+                        Text("清空").font(PVFont.body(11, weight: .medium))
                     }
                     .frame(maxWidth: .infinity)
-                    .foregroundStyle(PV.orange)
+                    .foregroundStyle(PV.peach)
                 }
             }
             .padding(.vertical, 8)
         }
-        .background(.regularMaterial)
+        .frame(maxWidth: .infinity)
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(PV.line, lineWidth: 1)
+        )
+        .shadow(color: PV.bean.opacity(0.14), radius: 14, y: 4)
+        .padding(.horizontal, 16)
+        .padding(.bottom, 6)
     }
 
     // MARK: - Empty State

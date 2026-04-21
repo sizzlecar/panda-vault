@@ -108,6 +108,8 @@ struct FolderDetailView: View {
         .toolbarBackground(PV.bg, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .navigationTitle(activeFolder.name)
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "在「\(activeFolder.name)」中搜索…")
         .onChange(of: searchText) { _, newValue in
             searchTask?.cancel()
@@ -122,6 +124,17 @@ struct FolderDetailView: View {
             }
         }
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button { dismiss() } label: {
+                    HStack(spacing: 2) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 16, weight: .semibold))
+                        Text("返回")
+                            .font(PVFont.body(15))
+                    }
+                    .foregroundStyle(PV.caramel)
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 HStack(spacing: 12) {
                     if isSelecting {
@@ -175,6 +188,17 @@ struct FolderDetailView: View {
                 onSave: { batchSaveToPhotos() },
                 onShare: { Task { await batchShare() } }
             )
+        }
+        .overlay(alignment: .bottom) {
+            if isSelecting && !selectedIds.isEmpty {
+                FloatingBatchBar(
+                    count: selectedIds.count,
+                    showDeleteConfirm: $showBatchDeleteConfirm,
+                    showBatchMove: $showBatchMove,
+                    onSave: { batchSaveToPhotos() },
+                    onShare: { Task { await batchShare() } }
+                )
+            }
         }
         .confirmationDialog(
             "确定删除 \(selectedIds.count) 个素材？",
@@ -428,29 +452,32 @@ private struct FolderDetailContent: View {
 
     var body: some View {
         ScrollView {
-            // 面包屑导航
+            // 面包屑导航（对应 cream.jsx 第 3 屏）
             if !breadcrumbs.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 4) {
+                    HStack(spacing: 6) {
                         Button(rootFolderName) {
                             onBreadcrumbTap?(-1)
                         }
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(.secondary)
+                        .font(PVFont.mono(11.5))
+                        .foregroundStyle(PV.sub)
 
                         ForEach(Array(breadcrumbs.enumerated()), id: \.offset) { idx, crumb in
-                            Text("/").font(.caption2).foregroundStyle(.tertiary)
+                            Text("/")
+                                .font(PVFont.mono(11.5))
+                                .foregroundStyle(PV.muted)
+                            let last = idx == breadcrumbs.count - 1
                             Button(crumb.name) {
                                 onBreadcrumbTap?(idx)
                             }
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(idx == breadcrumbs.count - 1 ? PV.cyan : .secondary)
+                            .font(PVFont.mono(11.5, weight: last ? .medium : .regular))
+                            .foregroundStyle(last ? PV.caramel : PV.sub)
                         }
                     }
-                    .padding(.horizontal)
-                    .padding(.vertical, 6)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 10)
                 }
-                .background(Color(.secondarySystemGroupedBackground))
+                .background(Color.white.opacity(0.5))
             }
 
             // 排序条（非搜索态才显示）

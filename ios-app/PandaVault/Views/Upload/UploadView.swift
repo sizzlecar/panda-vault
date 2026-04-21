@@ -770,47 +770,90 @@ private struct CreateFolderSheet: View {
     }
 
     var body: some View {
-        VStack(spacing: 16) {
-            Text("新建文件夹").font(.headline)
-
-            Text(previewPath)
-                .font(.system(.caption, design: .monospaced))
-                .foregroundStyle(PV.cyan)
-                .lineLimit(2)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(PV.cyan.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
-
-            TextField("文件夹名称", text: $folderName)
-                .textFieldStyle(.roundedBorder)
-                .focused($isFocused)
-
-            if !statusMsg.isEmpty {
-                Text(statusMsg)
-                    .font(.caption)
-                    .foregroundStyle(isError ? .red : PV.cyan)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            HStack(spacing: 16) {
-                Button("取消") { dismiss() }
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity)
-
-                Button(isCreating ? "创建中..." : "创建") {
-                    print("[PandaVault] 创建按钮被点击, name=\(folderName), parentId=\(String(describing: parentId))")
-                    Task { await doCreate() }
+        ZStack {
+            PV.bg.ignoresSafeArea()
+            VStack(alignment: .leading, spacing: 16) {
+                // 标题
+                HStack {
+                    Text("新建文件夹")
+                        .font(PVFont.display(22, weight: .medium))
+                        .foregroundStyle(PV.ink)
+                    Spacer()
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(PV.sub)
+                            .frame(width: 30, height: 30)
+                            .background(PV.ink.opacity(0.06), in: Circle())
+                    }
                 }
-                .fontWeight(.semibold)
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 10)
-                .background(trimmedName.isEmpty || isCreating ? .gray : PV.cyan, in: RoundedRectangle(cornerRadius: 8))
+                .padding(.top, 6)
+
+                // 路径预览（mono · 焦糖）
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("创建位置")
+                        .font(PVFont.sectionHeader)
+                        .tracking(1.5)
+                        .foregroundStyle(PV.muted)
+                    Text(previewPath)
+                        .font(PVFont.mono(12, weight: .medium))
+                        .foregroundStyle(PV.caramel)
+                        .lineLimit(2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(PV.caramel.opacity(0.09))
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+
+                // 名称输入
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("文件夹名称")
+                        .font(PVFont.sectionHeader)
+                        .tracking(1.5)
+                        .foregroundStyle(PV.muted)
+                    TextField("", text: $folderName, prompt:
+                        Text("比如 2026春节").font(PVFont.body(14.5)).foregroundStyle(PV.muted))
+                    .font(PVFont.body(15))
+                    .tint(PV.caramel)
+                    .focused($isFocused)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .background(Color.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .strokeBorder(PV.line, lineWidth: 1)
+                    )
+                }
+
+                if !statusMsg.isEmpty {
+                    Text(statusMsg)
+                        .font(PVFont.body(12))
+                        .foregroundStyle(isError ? PV.berry : PV.caramel)
+                        .padding(.horizontal, 4)
+                }
+
+                Spacer()
+
+                // CTA
+                Button {
+                    Task { await doCreate() }
+                } label: {
+                    HStack {
+                        if isCreating {
+                            ProgressView().tint(.white)
+                        } else {
+                            Text("创建")
+                        }
+                    }
+                }
+                .buttonStyle(CButtonStyle(tone: PV.caramel, filled: true, height: 48))
                 .disabled(trimmedName.isEmpty || isCreating)
+                .opacity(trimmedName.isEmpty ? 0.5 : 1)
             }
+            .padding(20)
         }
-        .padding(20)
         .onAppear { isFocused = true }
     }
 
