@@ -435,18 +435,6 @@ private struct GalleryTimelineView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // ★ 熊猫管家问候 + 最近在整理（仅在非搜索非图搜图态显示）
-            if vm.searchText.isEmpty && !vm.isImageSearchResult {
-                PandaGreeting()
-                    .padding(.horizontal, 20)
-                    .padding(.top, 2)
-                    .padding(.bottom, 10)
-                if !vm.recentFolders.isEmpty {
-                    RecentFoldersCarousel(folders: vm.recentFolders, api: api, onTap: onRecentFolderTap)
-                        .padding(.bottom, 6)
-                }
-            }
-
             // 图搜图结果横幅：带退出按钮
             if vm.isImageSearchResult {
                 HStack(spacing: 8) {
@@ -529,6 +517,19 @@ private struct GalleryTimelineView: View {
 
             ScrollViewReader { proxy in
                 ScrollView {
+                    // ★ 问候 + 最近在整理放进 ScrollView 顶部 —— 下滑时一起滑走让出视野
+                    //   只在非搜索非图搜图态显示；搜索时页面直接进入结果
+                    if vm.searchText.isEmpty && !vm.isImageSearchResult {
+                        PandaGreeting()
+                            .padding(.horizontal, 20)
+                            .padding(.top, 6)
+                            .padding(.bottom, 10)
+                        if !vm.recentFolders.isEmpty {
+                            RecentFoldersCarousel(folders: vm.recentFolders, api: api, onTap: onRecentFolderTap)
+                                .padding(.bottom, 8)
+                        }
+                    }
+
                     if !vm.searchText.isEmpty || vm.isImageSearchResult {
                         GalleryAssetsGrid(
                             assets: vm.assets,
