@@ -180,6 +180,10 @@ struct SettingsView: View {
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(PV.bg.ignoresSafeArea())
+            .toolbarBackground(PV.bg, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .navigationTitle("设置")
             .navigationBarTitleDisplayMode(.inline)
             .task {

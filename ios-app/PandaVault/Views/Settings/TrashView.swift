@@ -25,6 +25,9 @@ struct TrashView: View {
                 .padding(.horizontal, 2)
             }
         }
+        .background(PV.bg.ignoresSafeArea())
+        .toolbarBackground(PV.bg, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
         .navigationTitle("最近删除")
         .toolbar { trashToolbar }
         .safeAreaInset(edge: .bottom) {

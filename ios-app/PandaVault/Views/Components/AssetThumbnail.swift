@@ -11,28 +11,40 @@ struct AssetThumbnail: View {
             Color(.secondarySystemFill)
                 .aspectRatio(1, contentMode: .fit)
                 .overlay {
-                    AsyncImage(url: api.thumbnailURL(for: asset), transaction: Transaction()) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                        case .failure:
-                            Button {
-                                retryId += 1
-                            } label: {
-                                VStack(spacing: 4) {
-                                    Image(systemName: asset.isVideo ? "video" : "photo")
-                                    Image(systemName: "arrow.clockwise")
-                                        .font(.system(size: 10))
+                    if let url = api.thumbnailURL(for: asset) {
+                        AsyncImage(url: url, transaction: Transaction()) { phase in
+                            switch phase {
+                            case .success(let image):
+                                image
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                            case .failure:
+                                Button {
+                                    retryId += 1
+                                } label: {
+                                    VStack(spacing: 4) {
+                                        Image(systemName: asset.isVideo ? "video" : "photo")
+                                        Image(systemName: "arrow.clockwise")
+                                            .font(.system(size: 10))
+                                    }
+                                    .foregroundStyle(.tertiary)
                                 }
-                                .foregroundStyle(.tertiary)
+                            default:
+                                ProgressView().tint(PV.cyan)
                             }
-                        default:
-                            ProgressView().tint(PV.cyan)
+                        }
+                        .id(retryId)
+                    } else {
+                        // 缩略图还没生成（新上传/转码中）
+                        VStack(spacing: 4) {
+                            Image(systemName: asset.isVideo ? "film" : "photo")
+                                .font(.title2)
+                                .foregroundStyle(.secondary)
+                            Text("处理中")
+                                .font(.system(.caption2, design: .monospaced))
+                                .foregroundStyle(.tertiary)
                         }
                     }
-                    .id(retryId)
                 }
                 .clipped()
 

@@ -40,6 +40,12 @@
 	<string>需要保存视频到相册以便在剪影中使用</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>需要访问相册以浏览和上传视频素材</string>
+	<key>UIAppFonts</key>
+	<array>
+		<string>Fraunces.ttf</string>
+		<string>JetBrainsMono-Regular.ttf</string>
+		<string>JetBrainsMono-Medium.ttf</string>
+	</array>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>

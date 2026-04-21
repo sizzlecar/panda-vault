@@ -18,6 +18,7 @@ struct AssetDetailView: View {
     @State private var showShareSheet = false
     @State private var shareFileURL: URL?
     @State private var moveMessage = ""
+    @State private var showNoteEditor = false
 
     init(assets: [Asset], initialAsset: Asset, api: APIService, onDelete: (() -> Void)? = nil) {
         self.initialAsset = initialAsset
@@ -142,6 +143,13 @@ struct AssetDetailView: View {
         .sheet(isPresented: $showShareSheet) {
             if let url = shareFileURL {
                 ActivityView(items: [url])
+            }
+        }
+        .sheet(isPresented: $showNoteEditor) {
+            if let asset = current {
+                NoteEditorSheet(asset: asset, api: api) { updated in
+                    assets[currentIndex] = updated
+                }
             }
         }
     }
@@ -273,6 +281,12 @@ struct AssetDetailView: View {
             .font(.caption2)
             .foregroundStyle(.white.opacity(0.6))
 
+            // ★ 备注条（有内容展示，点击编辑；无内容显示 "+ 添加备注"）
+            Button { showNoteEditor = true } label: {
+                noteStrip(asset)
+            }
+            .buttonStyle(.plain)
+
             HStack(spacing: 10) {
                 Button { Task { await saveToPhotos(asset) } } label: {
                     HStack(spacing: 6) {
@@ -315,6 +329,37 @@ struct AssetDetailView: View {
         .padding(.bottom, 4)
         .background(.ultraThinMaterial)
         .environment(\.colorScheme, .dark)
+    }
+
+    private func noteStrip(_ asset: Asset) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            if let note = asset.note, !note.isEmpty {
+                Text("✍️")
+                    .font(.system(size: 14))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(note)
+                        .font(.system(size: 13))
+                        .foregroundStyle(.white.opacity(0.92))
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                    Text("编辑备注 ›")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.white.opacity(0.5))
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                Image(systemName: "plus.bubble")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.white.opacity(0.6))
+                Text("添加备注")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(.white.opacity(0.6))
+                Spacer()
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Color.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     // MARK: - Saving Overlay
@@ -585,6 +630,99 @@ struct ZoomableImageView: View {
             } else {
                 ProgressView().tint(.white)
             }
+        }
+    }
+}
+
+// MARK: - 备注编辑 Sheet（对应 cream.jsx 的 Asset.note 编辑流）
+
+struct NoteEditorSheet: View {
+    let asset: Asset
+    let api: APIService
+    var onSaved: (Asset) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var text: String
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+    @FocusState private var focused: Bool
+
+    init(asset: Asset, api: APIService, onSaved: @escaping (Asset) -> Void) {
+        self.asset = asset
+        self.api = api
+        self.onSaved = onSaved
+        _text = State(initialValue: asset.note ?? "")
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                PV.bg.ignoresSafeArea()
+                VStack(spacing: 14) {
+                    Text(asset.filename)
+                        .font(PVFont.mono(12))
+                        .foregroundStyle(PV.sub)
+                        .lineLimit(1)
+                        .padding(.top, 4)
+
+                    TextEditor(text: $text)
+                        .font(PVFont.body(15))
+                        .scrollContentBackground(.hidden)
+                        .padding(10)
+                        .background(Color.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(PV.line, lineWidth: 1)
+                        )
+                        .frame(maxHeight: 200)
+                        .focused($focused)
+
+                    if let err = errorMessage {
+                        Text(err)
+                            .font(PVFont.body(12))
+                            .foregroundStyle(PV.berry)
+                    }
+
+                    Text("给这张素材加个简短备注 — 方便日后剪辑时快速识别用途。")
+                        .font(PVFont.body(11))
+                        .foregroundStyle(PV.sub)
+                        .multilineTextAlignment(.center)
+
+                    Spacer()
+
+                    Button {
+                        Task { await save() }
+                    } label: {
+                        if isSaving { ProgressView().tint(.white) }
+                        else { Text("保存") }
+                    }
+                    .buttonStyle(CButtonStyle(tone: PV.caramel, filled: true, height: 46))
+                    .disabled(isSaving)
+                }
+                .padding(20)
+            }
+            .navigationTitle("编辑备注")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { dismiss() }
+                }
+            }
+            .onAppear { focused = true }
+        }
+    }
+
+    private func save() async {
+        isSaving = true
+        errorMessage = nil
+        defer { isSaving = false }
+        do {
+            let updated = try await api.updateAsset(id: asset.id, note: text)
+            onSaved(updated)
+            dismiss()
+        } catch {
+            errorMessage = "保存失败：\(error.localizedDescription)"
         }
     }
 }

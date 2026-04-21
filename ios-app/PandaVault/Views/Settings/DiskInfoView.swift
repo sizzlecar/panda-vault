@@ -66,6 +66,10 @@ struct DiskInfoView: View {
                 }
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(PV.bg.ignoresSafeArea())
+        .toolbarBackground(PV.bg, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
         .navigationTitle("磁盘信息")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {

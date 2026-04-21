@@ -31,6 +31,8 @@ struct PandaVaultApp: App {
             ContentView()
                 .environmentObject(appState)
                 .preferredColorScheme(.light)
+                .tint(PV.caramel)
+                .background(PV.bg.ignoresSafeArea())
         }
     }
 }

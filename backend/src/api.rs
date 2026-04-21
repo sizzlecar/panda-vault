@@ -52,6 +52,7 @@ pub fn routes(state: AppState) -> Router {
         // 文件夹
         .route("/api/folders", get(list_folders))
         .route("/api/folders", post(create_folder))
+        .route("/api/folders/recent", get(list_recent_folders))
         .route("/api/folders/:id", get(get_folder))
         .route("/api/folders/:id", put(update_folder))
         .route("/api/folders/:id", delete(delete_folder))
@@ -111,6 +112,8 @@ pub struct AssetDto {
     pub duration_sec: Option<i32>,
     pub width: Option<i32>,
     pub height: Option<i32>,
+    /// 用户自定义备注（可空；详情页底部编辑）
+    pub note: Option<String>,
 }
 
 
@@ -129,6 +132,7 @@ impl AssetDto {
             duration_sec: r.duration_sec,
             width: r.width,
             height: r.height,
+            note: r.note,
         }
     }
 }
@@ -148,6 +152,7 @@ pub struct AssetRow {
     width: Option<i32>,
     height: Option<i32>,
     volume_id: Option<Uuid>,
+    note: Option<String>,
 }
 
 // 一期：流式上传 -> 落盘 -> SHA256 去重 -> 缩略图 -> 入库
@@ -369,7 +374,7 @@ async fn list_assets(
             sqlx::query_as::<_, AssetRow>(
                 r#"
                 SELECT id, filename, file_path, proxy_path, thumb_path, file_hash, size_bytes,
-                       shoot_at, created_at, duration_sec, width, height, volume_id
+                       shoot_at, created_at, duration_sec, width, height, volume_id, note
                 FROM assets
                 WHERE is_deleted = FALSE
                   AND (filename ILIKE $1 OR file_path ILIKE $1)
@@ -388,7 +393,7 @@ async fn list_assets(
             sqlx::query_as::<_, AssetRow>(
                 r#"
                 SELECT id, filename, file_path, proxy_path, thumb_path, file_hash, size_bytes,
-                       shoot_at, created_at, duration_sec, width, height, volume_id
+                       shoot_at, created_at, duration_sec, width, height, volume_id, note
                 FROM assets
                 WHERE is_deleted = FALSE
                   AND COALESCE(shoot_at, created_at)::date >= $1
@@ -409,7 +414,7 @@ async fn list_assets(
             sqlx::query_as::<_, AssetRow>(
                 r#"
                 SELECT id, filename, file_path, proxy_path, thumb_path, file_hash, size_bytes,
-                       shoot_at, created_at, duration_sec, width, height, volume_id
+                       shoot_at, created_at, duration_sec, width, height, volume_id, note
                 FROM assets
                 WHERE is_deleted = FALSE
                 ORDER BY COALESCE(shoot_at, created_at) DESC NULLS LAST
@@ -444,7 +449,7 @@ async fn list_unassigned_assets(
             sqlx::query_as::<_, AssetRow>(
                 r#"
                 SELECT a.id, a.filename, a.file_path, a.proxy_path, a.thumb_path, a.file_hash, a.size_bytes,
-                       a.shoot_at, a.created_at, a.duration_sec, a.width, a.height, a.volume_id
+                       a.shoot_at, a.created_at, a.duration_sec, a.width, a.height, a.volume_id, a.note
                 FROM assets a
                 WHERE a.is_deleted = FALSE
                   AND NOT EXISTS (SELECT 1 FROM asset_folders af WHERE af.asset_id = a.id)
@@ -463,7 +468,7 @@ async fn list_unassigned_assets(
             sqlx::query_as::<_, AssetRow>(
                 r#"
                 SELECT a.id, a.filename, a.file_path, a.proxy_path, a.thumb_path, a.file_hash, a.size_bytes,
-                       a.shoot_at, a.created_at, a.duration_sec, a.width, a.height, a.volume_id
+                       a.shoot_at, a.created_at, a.duration_sec, a.width, a.height, a.volume_id, a.note
                 FROM assets a
                 WHERE a.is_deleted = FALSE
                   AND NOT EXISTS (SELECT 1 FROM asset_folders af WHERE af.asset_id = a.id)
@@ -491,7 +496,7 @@ async fn get_asset(State(state): State<AppState>, Path(id): Path<Uuid>) -> Respo
     let row: Option<AssetRow> = match sqlx::query_as::<_, AssetRow>(
         r#"
         SELECT id, filename, file_path, proxy_path, thumb_path, file_hash, size_bytes,
-               shoot_at, created_at, duration_sec, width, height, volume_id
+               shoot_at, created_at, duration_sec, width, height, volume_id, note
         FROM assets
         WHERE id = $1 AND is_deleted = FALSE
         "#,
@@ -513,7 +518,7 @@ async fn get_asset(State(state): State<AppState>, Path(id): Path<Uuid>) -> Respo
 async fn download_asset(State(state): State<AppState>, Path(id): Path<Uuid>) -> Response {
     let row: Option<AssetRow> = match sqlx::query_as::<_, AssetRow>(
         "SELECT id, filename, file_path, proxy_path, thumb_path, file_hash, size_bytes,
-                shoot_at, created_at, duration_sec, width, height, volume_id
+                shoot_at, created_at, duration_sec, width, height, volume_id, note
          FROM assets WHERE id = $1 AND is_deleted = FALSE",
     )
     .bind(id)
@@ -563,6 +568,9 @@ async fn download_asset(State(state): State<AppState>, Path(id): Path<Uuid>) -> 
 #[derive(Deserialize)]
 struct UpdateAssetRequest {
     filename: Option<String>,
+    /// 用户备注（显示在详情页底部）
+    /// 传 Some(String) 更新，传 Some("") 清空，缺字段（None）不动
+    note: Option<String>,
 }
 
 async fn update_asset(
@@ -570,24 +578,32 @@ async fn update_asset(
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateAssetRequest>,
 ) -> Response {
-    let Some(filename) = req.filename.map(|s| s.trim().to_string()) else {
-        return json_err(StatusCode::BAD_REQUEST, "缺少字段 filename").into_response();
-    };
-    if filename.is_empty() {
-        return json_err(StatusCode::BAD_REQUEST, "filename 不能为空").into_response();
+    let filename = req.filename.map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let note = req.note.map(|s| {
+        let trimmed = s.trim();
+        if trimmed.is_empty() { None } else { Some(trimmed.to_string()) }
+    });
+
+    if filename.is_none() && note.is_none() {
+        return json_err(StatusCode::BAD_REQUEST, "至少提供 filename 或 note").into_response();
     }
 
+    // 用 COALESCE 语义：NULL 表示"不修改该字段"
     let updated = sqlx::query_as::<_, AssetRow>(
         r#"
-        UPDATE assets
-        SET filename = $2
+        UPDATE assets SET
+            filename = COALESCE($2, filename),
+            note     = CASE WHEN $3::BOOLEAN THEN $4 ELSE note END
         WHERE id = $1 AND is_deleted = FALSE
         RETURNING id, filename, file_path, proxy_path, thumb_path, file_hash, size_bytes,
-                  shoot_at, created_at, duration_sec, width, height, volume_id
+                  shoot_at, created_at, duration_sec, width, height, volume_id, note
         "#,
     )
     .bind(id)
-    .bind(filename)
+    .bind(filename.as_deref())
+    .bind(note.is_some())                       // $3: 是否改 note
+    .bind(note.and_then(|v| v))                 // $4: 新 note（None = 清空）
     .fetch_optional(&state.pool)
     .await;
 
@@ -762,7 +778,7 @@ async fn semantic_search(
     let rows = match sqlx::query_as::<_, AssetRow>(
         r#"
         SELECT id, filename, file_path, proxy_path, thumb_path, file_hash, size_bytes,
-               shoot_at, created_at, duration_sec, width, height, volume_id
+               shoot_at, created_at, duration_sec, width, height, volume_id, note
         FROM assets
         WHERE id = ANY($1)
         "#,
@@ -798,6 +814,7 @@ async fn semantic_search(
                     width: row.width,
                     height: row.height,
                     volume_id: row.volume_id,
+                    note: row.note.clone(),
                 }),
                 similarity: sr.similarity,
             })
@@ -862,7 +879,7 @@ async fn image_search(
     let asset_ids: Vec<Uuid> = search_results.iter().map(|r| r.asset_id).collect();
     let rows = match sqlx::query_as::<_, AssetRow>(
         "SELECT id, filename, file_path, proxy_path, thumb_path, file_hash, size_bytes,
-                shoot_at, created_at, duration_sec, width, height, volume_id
+                shoot_at, created_at, duration_sec, width, height, volume_id, note
          FROM assets WHERE id = ANY($1)",
     )
     .bind(&asset_ids)
@@ -893,6 +910,7 @@ async fn image_search(
                     width: row.width,
                     height: row.height,
                     volume_id: row.volume_id,
+                    note: row.note.clone(),
                 }),
                 similarity: sr.similarity,
             })
@@ -1213,7 +1231,7 @@ async fn empty_trash(
     let rows: Vec<TrashFileRow> = if req.ids.is_empty() {
         // 不传 ids → 删除所有已过期（7天）的
         sqlx::query_as(
-            r#"SELECT id, file_path, proxy_path, thumb_path, volume_id
+            r#"SELECT id, file_path, proxy_path, thumb_path, volume_id, note
                FROM assets WHERE is_deleted = TRUE AND deleted_at < NOW() - INTERVAL '7 days'"#,
         )
         .fetch_all(&state.pool)
@@ -1378,6 +1396,53 @@ async fn list_folders(
             }
             (StatusCode::OK, Json(folders)).into_response()
         }
+        Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+struct RecentFoldersQuery {
+    limit: Option<i64>,
+}
+
+/// GET /api/folders/recent?limit=N — 最近活跃的 N 个文件夹（按 updated_at DESC）
+/// 供"最近在整理"横滚卡用
+async fn list_recent_folders(
+    State(state): State<AppState>,
+    Query(q): Query<RecentFoldersQuery>,
+) -> Response {
+    let limit = q.limit.unwrap_or(6).clamp(1, 30);
+    let rows = sqlx::query_as::<_, folder::FolderWithCount>(
+        r#"
+        SELECT
+            f.id, f.name, f.description, f.cover_asset_id, f.parent_id,
+            f.created_by, f.created_at, f.updated_at,
+            f.fs_name, f.fs_path,
+            COALESCE(f.cover_thumb_path, cover_asset.thumb_path, latest_asset.thumb_path) as cover_thumb_path,
+            f.total_asset_count as asset_count,
+            f.total_bytes
+        FROM folders f
+        LEFT JOIN assets cover_asset ON cover_asset.id = f.cover_asset_id
+        LEFT JOIN LATERAL (
+            SELECT a.thumb_path
+            FROM asset_folders af
+            JOIN assets a ON a.id = af.asset_id
+            WHERE af.folder_id = f.id AND a.is_deleted = FALSE
+            ORDER BY af.added_at DESC
+            LIMIT 1
+        ) latest_asset ON true
+        WHERE f.is_deleted = FALSE
+          AND COALESCE(f.total_asset_count, 0) > 0
+        ORDER BY f.updated_at DESC
+        LIMIT $1
+        "#
+    )
+    .bind(limit)
+    .fetch_all(&state.pool)
+    .await;
+
+    match rows {
+        Ok(folders) => (StatusCode::OK, Json(folders)).into_response(),
         Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
 }

@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>PandaVault · 奶油软萌方向 (对齐实际代码)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=JetBrains+Mono:wght@300;400;500;600;700&family=Noto+Serif+SC:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  html, body { margin: 0; padding: 0; background: #f0eee9; font-family: -apple-system, system-ui, sans-serif; }
+  .zh { font-family: "HarmonyOS Sans SC", "PingFang SC", -apple-system, "Noto Sans SC", sans-serif; }
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="ios-frame.jsx"></script>
+
+<script type="text/babel" src="src/shared.jsx"></script>
+<script type="text/babel" src="src/cream.jsx"></script>
+
+<script type="text/babel">
+function App() {
+  return (
+    <DesignCanvas>
+      <DCSection id="intro" title="PandaVault · 奶油软萌" subtitle="对齐现有 SwiftUI 代码的 9 屏完整设计 · Folders (可嵌套) · Assets (photo/video) · 上传队列 · 回收站 · 磁盘">
+      </DCSection>
+
+      <DCSection id="main" title="主流程" subtitle="3 个 Tab · 顶层入口">
+        <DCArtboard id="c-timeline"  label="素材库 · 时间视图" width={390} height={844}><CreamTimeline /></DCArtboard>
+        <DCArtboard id="c-folders"   label="素材库 · 文件夹"  width={390} height={844}><CreamFolders /></DCArtboard>
+        <DCArtboard id="c-upload"    label="上传"            width={390} height={844}><CreamUpload /></DCArtboard>
+        <DCArtboard id="c-settings"  label="设置"            width={390} height={844}><CreamSettings /></DCArtboard>
+      </DCSection>
+
+      <DCSection id="detail" title="详情与下钻" subtitle="可嵌套文件夹 · 素材沉浸模式">
+        <DCArtboard id="c-folderdetail" label="文件夹详情 (面包屑 + 嵌套)" width={390} height={844}><CreamFolderDetail /></DCArtboard>
+        <DCArtboard id="c-detail"       label="素材详情 (图片)"              width={390} height={844}><CreamDetail /></DCArtboard>
+        <DCArtboard id="c-folderpicker" label="文件夹选择器 (上传目标)"     width={390} height={844}><CreamFolderPicker /></DCArtboard>
+      </DCSection>
+
+      <DCSection id="storage" title="存储管理" subtitle="7 天回收站 + 多卷磁盘">
+        <DCArtboard id="c-trash"    label="最近删除 (7 天倒计时)"  width={390} height={844}><CreamTrash /></DCArtboard>
+        <DCArtboard id="c-disk"     label="磁盘信息 (多卷)"         width={390} height={844}><CreamDiskInfo /></DCArtboard>
+      </DCSection>
+    </DesignCanvas>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

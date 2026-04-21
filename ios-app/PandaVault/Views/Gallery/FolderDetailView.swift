@@ -104,8 +104,11 @@ struct FolderDetailView: View {
                 }
             }
         )
+        .background(PV.bg.ignoresSafeArea())
+        .toolbarBackground(PV.bg, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
         .navigationTitle(activeFolder.name)
-        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "在「\(activeFolder.name)」中搜索...")
+        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "在「\(activeFolder.name)」中搜索…")
         .onChange(of: searchText) { _, newValue in
             searchTask?.cancel()
             if newValue.isEmpty {

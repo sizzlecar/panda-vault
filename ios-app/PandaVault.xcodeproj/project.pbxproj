@@ -11,11 +11,13 @@
 		137756ADF508F404D6CEEA76 /* VolumeInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01490E9C35F80C6774970D7C /* VolumeInfo.swift */; };
 		177D518F0E33FBA66032D978 /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9CAAA06C9B5E48B4F4DCB17 /* APIService.swift */; };
 		21FBDC0465DF9125E176A9BA /* FileFingerprint.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50A842737E8F8BBD794483B8 /* FileFingerprint.swift */; };
+		24AAAD4A66D8AB6EA6CABF0E /* JetBrainsMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = BB964B679897F99C1DA5D328 /* JetBrainsMono-Regular.ttf */; };
 		2D597EFA88F78B0C400DB026 /* GalleryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39645935F02BA2D5E9F2790B /* GalleryView.swift */; };
 		2D753E460B8FABFDDECBBA50 /* PandaVaultApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43ADA517816152615440546D /* PandaVaultApp.swift */; };
 		2FC5A9E92C66259B7EAF559B /* Folder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F98DD37E96545FEB0CA7EF9 /* Folder.swift */; };
 		32408437187A0520834D81F1 /* PVLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9688F45A08F04C1871464184 /* PVLogger.swift */; };
 		38A483D483BD4EB9FBA34F9F /* UploadView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38E2D4A05A3D490813EA0954 /* UploadView.swift */; };
+		3D3D8D697A76BF12D1D9D061 /* Fraunces.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 64C127EE1CFAEEDEBBE208A9 /* Fraunces.ttf */; };
 		45E87B7572AD5698160CC7E7 /* BonjourBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E79E82426569E0D010E107D /* BonjourBrowser.swift */; };
 		4EFCFB647111F90AEC32FDEA /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4217984CDFF4D0A6CFA0A72 /* SettingsView.swift */; };
 		5FF94CD3AF4B6B58432EFF37 /* BackgroundSyncManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9310406502855EAD8180F719 /* BackgroundSyncManager.swift */; };
@@ -34,6 +36,7 @@
 		D83B1F2997435CC77724655C /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40A5487E62E77F2C531BEF4B /* ContentView.swift */; };
 		E43B79D203D9277EDB78E1EF /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = C760A2FC8090E91B047AF6B6 /* Theme.swift */; };
 		EAF45DBC63FE4B86BBC6ECF9 /* HealthResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 292E0667F303386093116697 /* HealthResponse.swift */; };
+		F1584A06D9E7F94A55470E77 /* JetBrainsMono-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 8C509123CB76AC26F78CF819 /* JetBrainsMono-Medium.ttf */; };
 		F4EE49C82A5FDEB0661A5626 /* GalleryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3689C5DEE8DB231B932B5CD /* GalleryViewModel.swift */; };
 		F9C922D3A9853F24853993A0 /* UploadSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5B3AEEC77D97014B69E14E8 /* UploadSession.swift */; };
 /* End PBXBuildFile section */
@@ -52,19 +55,22 @@
 		43ADA517816152615440546D /* PandaVaultApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PandaVaultApp.swift; sourceTree = "<group>"; };
 		50A842737E8F8BBD794483B8 /* FileFingerprint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileFingerprint.swift; sourceTree = "<group>"; };
 		53E83E013626C8067B67210B /* FolderDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderDetailView.swift; sourceTree = "<group>"; };
+		64C127EE1CFAEEDEBBE208A9 /* Fraunces.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = Fraunces.ttf; sourceTree = "<group>"; };
 		7268F26941B8C7629FD1C7B6 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		78D270CA190879A9F0B046E9 /* UploadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UploadManager.swift; sourceTree = "<group>"; };
+		8C509123CB76AC26F78CF819 /* JetBrainsMono-Medium.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "JetBrainsMono-Medium.ttf"; sourceTree = "<group>"; };
 		9310406502855EAD8180F719 /* BackgroundSyncManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundSyncManager.swift; sourceTree = "<group>"; };
 		9688F45A08F04C1871464184 /* PVLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PVLogger.swift; sourceTree = "<group>"; };
 		9C6B01EFFB3248C3DCB738D8 /* DownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadManager.swift; sourceTree = "<group>"; };
 		9E79E82426569E0D010E107D /* BonjourBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BonjourBrowser.swift; sourceTree = "<group>"; };
 		9F98DD37E96545FEB0CA7EF9 /* Folder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Folder.swift; sourceTree = "<group>"; };
 		A42D159C80C138B6EFFA6BF2 /* AssetThumbnail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssetThumbnail.swift; sourceTree = "<group>"; };
+		BB964B679897F99C1DA5D328 /* JetBrainsMono-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "JetBrainsMono-Regular.ttf"; sourceTree = "<group>"; };
 		BF8939B2D186E19667C038A5 /* PhotoLibraryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoLibraryService.swift; sourceTree = "<group>"; };
 		C3689C5DEE8DB231B932B5CD /* GalleryViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GalleryViewModel.swift; sourceTree = "<group>"; };
 		C459592961D64B41B4E88FB7 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		C760A2FC8090E91B047AF6B6 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
-		E5144C57BD849EC9B141765E /* PandaVault.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PandaVault.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		E5144C57BD849EC9B141765E /* PandaVault.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = PandaVault.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E7CE284746159FD8561B44C5 /* LogReporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogReporter.swift; sourceTree = "<group>"; };
 		E9CAAA06C9B5E48B4F4DCB17 /* APIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIService.swift; sourceTree = "<group>"; };
 		EEF197138072CC68AB52D639 /* Asset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Asset.swift; sourceTree = "<group>"; };
@@ -90,6 +96,7 @@
 			children = (
 				C459592961D64B41B4E88FB7 /* Assets.xcassets */,
 				04090C10A72F3B3C12246590 /* Info.plist */,
+				F14C869F5EDFC9D060FE4893 /* Fonts */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -204,6 +211,16 @@
 			path = Services;
 			sourceTree = "<group>";
 		};
+		F14C869F5EDFC9D060FE4893 /* Fonts */ = {
+			isa = PBXGroup;
+			children = (
+				64C127EE1CFAEEDEBBE208A9 /* Fraunces.ttf */,
+				8C509123CB76AC26F78CF819 /* JetBrainsMono-Medium.ttf */,
+				BB964B679897F99C1DA5D328 /* JetBrainsMono-Regular.ttf */,
+			);
+			path = Fonts;
+			sourceTree = "<group>";
+		};
 		F55AE1F378C4146B4193D66F /* Settings */ = {
 			isa = PBXGroup;
 			children = (
@@ -253,6 +270,7 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					4E30D767888DB7EA351F5588 = {
+						DevelopmentTeam = "";
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -282,6 +300,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				B6717616DE470F5F9A3B8A13 /* Assets.xcassets in Resources */,
+				3D3D8D697A76BF12D1D9D061 /* Fraunces.ttf in Resources */,
+				F1584A06D9E7F94A55470E77 /* JetBrainsMono-Medium.ttf in Resources */,
+				24AAAD4A66D8AB6EA6CABF0E /* JetBrainsMono-Regular.ttf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -331,7 +352,6 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = 47HJ8X7954;
 				INFOPLIST_FILE = PandaVault/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -349,7 +369,6 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = 47HJ8X7954;
 				INFOPLIST_FILE = PandaVault/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

@@ -57,6 +57,24 @@ final class APIService: Sendable {
         try await get("/api/assets/\(id)")
     }
 
+    /// 更新资产（当前支持修改 filename 和 note；传 note: nil 表示不动，传 note: "" 清空）
+    func updateAsset(id: UUID, filename: String? = nil, note: String? = nil) async throws -> Asset {
+        struct Req: Codable {
+            let filename: String?
+            let note: String?
+        }
+        guard let url = makeURL("/api/assets/\(id)") else { throw APIError.invalidURL }
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let encoder = JSONEncoder()
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        request.httpBody = try encoder.encode(Req(filename: filename, note: note))
+        let (data, response) = try await session.data(for: request)
+        try validateResponse(response)
+        return try decoder.decode(Asset.self, from: data)
+    }
+
     func deleteAsset(id: UUID) async throws {
         guard let url = makeURL("/api/assets/\(id)") else { throw APIError.invalidURL }
         var request = URLRequest(url: url)
@@ -154,6 +172,12 @@ final class APIService: Sendable {
         var path = "/api/folders"
         if let pid = parentId { path += "?parent_id=\(pid)" }
         return try await get(path)
+    }
+
+    /// 最近活跃的 N 个文件夹 — 按 updated_at DESC，只返回非空文件夹
+    /// 用于素材库时间视图顶部的"最近在整理"横滚卡
+    func getRecentFolders(limit: Int = 6) async throws -> [Folder] {
+        try await get("/api/folders/recent?limit=\(limit)")
     }
 
     func createFolder(name: String, parentId: UUID? = nil) async throws -> Folder {

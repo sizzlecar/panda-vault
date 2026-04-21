@@ -14,11 +14,13 @@ struct Asset: Codable, Identifiable, Equatable {
     let width: Int?
     let height: Int?
     let deletedAt: Date?
+    /// 用户自定义备注（详情页底部编辑）
+    let note: String?
 
     // deletedAt 是可选的，普通列表接口不返回
     enum CodingKeys: String, CodingKey {
         case id, filename, filePath, proxyPath, thumbPath, fileHash, sizeBytes
-        case shootAt, createdAt, durationSec, width, height, deletedAt
+        case shootAt, createdAt, durationSec, width, height, deletedAt, note
     }
 
     init(from decoder: Decoder) throws {
@@ -36,6 +38,7 @@ struct Asset: Codable, Identifiable, Equatable {
         width = try c.decodeIfPresent(Int.self, forKey: .width)
         height = try c.decodeIfPresent(Int.self, forKey: .height)
         deletedAt = try c.decodeIfPresent(Date.self, forKey: .deletedAt)
+        note = try c.decodeIfPresent(String.self, forKey: .note)
     }
 
     var isVideo: Bool {

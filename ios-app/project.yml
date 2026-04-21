@@ -50,3 +50,7 @@ targets:
         UIBackgroundModes:
           - fetch
           - processing
+        UIAppFonts:
+          - Fraunces.ttf
+          - JetBrainsMono-Regular.ttf
+          - JetBrainsMono-Medium.ttf

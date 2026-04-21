@@ -139,6 +139,7 @@ pub async fn ingest_upload_bytes(
                 duration_sec: existing.duration_sec,
                 width: existing.width,
                 height: existing.height,
+                note: None,
             },
         });
     }
@@ -189,6 +190,7 @@ pub async fn ingest_upload_bytes(
                         duration_sec: existing.duration_sec,
                         width: existing.width,
                         height: existing.height,
+                        note: None,
                     },
                 });
             }
@@ -342,7 +344,7 @@ async fn find_by_id(pool: &PgPool, id: Uuid) -> anyhow::Result<Option<crate::api
     let row = sqlx::query_as::<_, crate::api::AssetRow>(
         r#"
         SELECT id, filename, file_path, proxy_path, thumb_path, file_hash, size_bytes,
-               shoot_at, created_at, duration_sec, width, height, volume_id
+               shoot_at, created_at, duration_sec, width, height, volume_id, note
         FROM assets
         WHERE id = $1
         "#,

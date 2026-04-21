@@ -207,6 +207,19 @@ final class GalleryViewModel: ObservableObject {
         } catch { print("[PandaVault] Error: \(error)") }
     }
 
+    @Published var recentFolders: [Folder] = []
+
+    /// 拉"最近在整理"横滚卡数据
+    func loadRecentFolders(limit: Int = 6) async {
+        do {
+            recentFolders = try await api.getRecentFolders(limit: limit)
+        } catch {
+            // 老后端没这个接口时返回 404；优雅降级 — 仅打日志
+            PVLog.info("loadRecentFolders 失败（老后端？）: \(error.localizedDescription)")
+            recentFolders = []
+        }
+    }
+
     func createNewFolder() async {
         // 默认名称，可后续改成弹窗输入
         let name = "新文件夹 \(folders.count + 1)"

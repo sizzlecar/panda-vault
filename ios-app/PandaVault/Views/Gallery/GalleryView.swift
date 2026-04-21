@@ -37,8 +37,12 @@ struct GalleryView: View {
                 selectedAsset: $selectedAsset,
                 selectedFolder: $selectedFolder
             )
+            .background(PV.bg.ignoresSafeArea())
+            .scrollContentBackground(.hidden)
             .navigationTitle("素材库")
-            .searchable(text: $vm.searchText, prompt: "搜索素材...")
+            .toolbarBackground(PV.bg, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .searchable(text: $vm.searchText, prompt: "搜索素材…")
             .onSubmit(of: .search) { Task { await vm.search() } }
             .onChange(of: vm.searchText) { _, val in
                 if val.isEmpty { vm.clearImageSearch() }
@@ -144,10 +148,11 @@ struct GalleryView: View {
         .task {
             guard !appState.serverURL.isEmpty else { return }
             vm.updateAPI(appState.api)
-            // 并行，降低首屏总耗时（主线程 hang 检测器会把串行等待也算进 ms）
+            // 并行拉 timeline / folders / recentFolders，降低首屏总耗时
             async let t: Void = vm.loadTimeline()
             async let f: Void = vm.loadFolders()
-            _ = await (t, f)
+            async let r: Void = vm.loadRecentFolders()
+            _ = await (t, f, r)
         }
     }
 
@@ -285,14 +290,9 @@ private struct GalleryContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Picker("", selection: $viewMode) {
-                ForEach(GalleryViewMode.allCases, id: \.self) { mode in
-                    Text(mode.rawValue).tag(mode)
-                }
-            }
-            .pickerStyle(.segmented)
-            .padding(.horizontal)
-            .padding(.vertical, 8)
+            CreamSegmented(selection: $viewMode)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 10)
 
             switch viewMode {
             case .timeline:
@@ -311,6 +311,38 @@ private struct GalleryContentView: View {
                 )
             }
         }
+    }
+}
+
+/// 奶油风格 segmented — 32pt 高，底层米色胶囊，选中白底带软阴影
+private struct CreamSegmented: View {
+    @Binding var selection: GalleryViewMode
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(GalleryViewMode.allCases, id: \.self) { mode in
+                let on = selection == mode
+                Button { selection = mode } label: {
+                    Text(mode.rawValue)
+                        .font(PVFont.body(13, weight: .medium))
+                        .foregroundStyle(on ? PV.ink : PV.sub)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 28)
+                        .background(
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .fill(on ? Color.white : Color.clear)
+                                .shadow(color: on ? PV.bean.opacity(0.06) : .clear, radius: 2, y: 1)
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(2)
+        .frame(height: 32)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(PV.ink.opacity(0.08))
+        )
     }
 }
 
@@ -356,6 +388,18 @@ private struct GalleryTimelineView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // ★ 熊猫管家问候 + 最近在整理（仅在非搜索非图搜图态显示）
+            if vm.searchText.isEmpty && !vm.isImageSearchResult {
+                PandaGreeting()
+                    .padding(.horizontal, 20)
+                    .padding(.top, 2)
+                    .padding(.bottom, 10)
+                if !vm.recentFolders.isEmpty {
+                    RecentFoldersCarousel(folders: vm.recentFolders, api: api)
+                        .padding(.bottom, 6)
+                }
+            }
+
             // 图搜图结果横幅：带退出按钮
             if vm.isImageSearchResult {
                 HStack(spacing: 8) {
@@ -540,18 +584,18 @@ private struct TimelineSectionHeader: View {
     let group: TimelineGroup
 
     var body: some View {
-        HStack {
+        HStack(alignment: .lastTextBaseline) {
             Text(group.displayMonth)
-                .font(.system(.caption, design: .monospaced).bold())
-                .foregroundStyle(.primary)
+                .font(PVFont.mono(13, weight: .medium))
+                .foregroundStyle(PV.ink)
             Spacer()
             Text("\(group.count)")
-                .font(.system(.caption2, design: .monospaced))
-                .foregroundStyle(.tertiary)
+                .font(PVFont.mono(11))
+                .foregroundStyle(PV.muted)
         }
-        .padding(.horizontal)
-        .padding(.vertical, 6)
-        .background(Color(.systemBackground))
+        .padding(.horizontal, 20)
+        .padding(.vertical, 8)
+        .background(PV.bg)
     }
 }
 
@@ -764,6 +808,146 @@ private struct GalleryFoldersEmptyState: View {
                 .foregroundStyle(.tertiary)
         }
         .padding(.top, 80)
+    }
+}
+
+// MARK: - 熊猫管家问候（Timeline 顶部）
+
+struct PandaGreeting: View {
+    @EnvironmentObject var appState: AppState
+    @ObservedObject private var sync = SyncEngine.shared
+
+    private var greeting: String {
+        let h = Calendar.current.component(.hour, from: Date())
+        switch h {
+        case 5..<11: return "早上好呀～"
+        case 11..<14: return "中午好呀～"
+        case 14..<18: return "下午好～"
+        case 18..<23: return "晚上好～"
+        default: return "夜深啦～"
+        }
+    }
+
+    private var subtitle: String {
+        let unsynced = sync.unsyncedCount
+        if unsynced == 0 { return "今天的素材都同步好啦" }
+        return "相册里还有 \(unsynced) 件没同步"
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 10) {
+            CPandaHi(size: 42)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(greeting)
+                    .font(PVFont.display(22, weight: .medium))
+                    .foregroundStyle(PV.ink)
+                    .lineLimit(1)
+                Text(subtitle)
+                    .font(PVFont.body(11.5))
+                    .foregroundStyle(PV.sub)
+                    .lineLimit(1)
+            }
+            Spacer()
+        }
+    }
+}
+
+// MARK: - 最近在整理（横滚卡）
+
+struct RecentFoldersCarousel: View {
+    let folders: [Folder]
+    let api: APIService
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("最近在整理")
+                    .font(PVFont.sectionHeader)
+                    .tracking(1.5)
+                    .foregroundStyle(PV.muted)
+                Spacer()
+            }
+            .padding(.horizontal, 20)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    ForEach(folders) { f in
+                        RecentFolderCard(folder: f, api: api)
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 2)
+            }
+        }
+    }
+}
+
+private struct RecentFolderCard: View {
+    let folder: Folder
+    let api: APIService
+
+    private func relativeTime(_ date: Date?) -> String {
+        guard let date else { return "—" }
+        let s = Int(Date().timeIntervalSince(date))
+        if s < 3600 { return "刚刚" }
+        if s < 86400 { return "今天" }
+        if s < 86400 * 2 { return "昨天" }
+        if s < 86400 * 7 { return "\(s / 86400) 天前" }
+        let fmt = DateFormatter(); fmt.dateFormat = "M月d日"
+        return fmt.string(from: date)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            coverImage
+            VStack(alignment: .leading, spacing: 1) {
+                Text(folder.name)
+                    .font(PVFont.body(11.5, weight: .semibold))
+                    .foregroundStyle(PV.ink)
+                    .lineLimit(1)
+                HStack(spacing: 3) {
+                    Text(relativeTime(folder.updatedAt))
+                        .font(PVFont.body(9.5))
+                        .foregroundStyle(PV.sub)
+                    Text("·")
+                        .font(PVFont.body(9.5))
+                        .foregroundStyle(PV.muted)
+                    Text("\(folder.assetCount ?? 0)")
+                        .font(PVFont.mono(9.5))
+                        .foregroundStyle(PV.sub)
+                }
+            }
+            .padding(.horizontal, 3)
+            .padding(.bottom, 2)
+        }
+        .frame(width: 108)
+        .padding(5)
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(PV.line, lineWidth: 1)
+        )
+    }
+
+    @ViewBuilder
+    private var coverImage: some View {
+        let url = api.folderCoverURL(for: folder)
+        Group {
+            if let url {
+                AsyncImage(url: url) { phase in
+                    if let img = phase.image {
+                        img.resizable().aspectRatio(contentMode: .fill)
+                    } else {
+                        PV.muted.opacity(0.15)
+                    }
+                }
+            } else {
+                PV.muted.opacity(0.15).overlay(Image(systemName: "folder").foregroundStyle(PV.muted))
+            }
+        }
+        .frame(height: 68)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }
 

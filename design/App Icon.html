@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>PandaVault · App Icon 像素风</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet" />
+<style>
+  html, body { margin: 0; padding: 0; background: #ECE8DF; font-family: -apple-system, "PingFang SC", system-ui, sans-serif; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 48px 40px 120px; }
+  h1 { font-family: 'Fraunces', serif; font-weight: 500; font-size: 44px; letter-spacing: -0.8px; color: #2b2b2b; margin: 0 0 8px; }
+  .sub { color: #6a6a6a; font-size: 15px; max-width: 680px; line-height: 1.55; }
+  .note { margin-top: 18px; padding: 12px 16px; background: #fff; border-radius: 10px; border-left: 3px solid #C68B5F; font-size: 13px; color: #4a4a4a; max-width: 680px; line-height: 1.6; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px 26px; margin-top: 44px; }
+  .card { background: #fff; border-radius: 20px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,.04), inset 0 0 0 1px rgba(0,0,0,.04); }
+  .card h3 { font-family: 'Fraunces', serif; font-weight: 500; font-size: 18px; margin: 0 0 3px; color: #2b2b2b; letter-spacing: -0.2px; }
+  .card p  { color: #7a7a7a; font-size: 12.5px; margin: 0 0 16px; line-height: 1.5; }
+  .icon-row { display: flex; align-items: flex-end; gap: 12px; }
+  .icon-row .w { border-radius: 22.37%; overflow: hidden; box-shadow: 0 6px 18px rgba(0,0,0,.12), inset 0 0 0 .5px rgba(0,0,0,.06); background: #fff; }
+  .icon-row .big { width: 180px; height: 180px; }
+  .icon-row .mid { width: 118px; height: 118px; }
+  .icon-row .sm  { width: 60px;  height: 60px;  }
+  .icon-row .w svg { display: block; width: 100%; height: 100%; }
+  .homerow { margin-top: 60px; background: linear-gradient(180deg, #a8a098 0%, #6a5d52 100%); border-radius: 40px; padding: 32px 24px; display: grid; grid-template-columns: repeat(6, 1fr); gap: 22px; }
+  .homerow .cell { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .homerow .cell .i { width: 88px; height: 88px; border-radius: 22.37%; overflow: hidden; box-shadow: 0 8px 18px rgba(0,0,0,.3); background: #fff; }
+  .homerow .cell .i svg { display: block; width: 100%; height: 100%; }
+  .homerow .cell .l { font-size: 11px; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.4); letter-spacing: 0.3px; }
+  .tag { display: inline-block; font-size: 10px; background: #2b2b2b; color: #fff; padding: 2px 7px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; margin-right: 6px; letter-spacing: 0.5px; vertical-align: 2px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>App Icon · 像素风重做</h1>
+  <div class="sub">参考你给的像素熊猫 + 取景框方向 · 6 个变体 · 每个 180 / 118 / 60 三个尺寸 + 真实桌面预览。缩小到 60px 依然要能认得出熊猫。</div>
+  <div class="note"><strong>像素风的设计守则：</strong>像素都是方的，每一个"像素"是 8×8 的 SVG 单元格；绝不用圆形反锯齿；用有限的几何形（正方 / 边角 / 点）做熊猫眼睛 + 鼻子；取景框用细黑线画四角。</div>
+
+  <div class="grid" id="grid"></div>
+
+  <div style="margin-top: 60px; color: #7a7a7a; font-size: 12px; letter-spacing: 1px; text-transform: uppercase; font-weight: 600;">在模拟桌面上</div>
+  <div class="homerow" id="homerow"></div>
+</div>
+
+<script>
+// ═════════════════════════════════════════════════════════════
+// Pixel-art system
+// 画布：一个 icon 是 32×32 的"像素格"，实际输出 1024×1024（每格 32px）
+// 所有坐标都用格子单位 → 缩小时每一像素保持锐利
+// ═════════════════════════════════════════════════════════════
+
+const G = 32;                    // grid unit in px (32*32 = 1024)
+const ICON = 1024;
+
+// Shorthand for a "pixel" rect
+const px = (x, y, w, h, fill) => `<rect x="${x*G}" y="${y*G}" width="${w*G}" height="${h*G}" fill="${fill}" shape-rendering="crispEdges"/>`;
+
+// Viewfinder corners (取景框四角) at grid positions — strokeless, drawn as rects
+function viewfinder(fill = '#1a1a1a', inset = 2) {
+  const t = 0.5;             // bar thickness (0.5 grid = 16px)
+  const L = 4;               // arm length (4 grid = 128px)
+  const s = inset;           // top-left corner start
+  const e = 32 - inset;      // bottom-right corner end (exclusive)
+  return [
+    // top-left
+    px(s, s, L, t, fill), px(s, s, t, L, fill),
+    // top-right
+    px(e - L, s, L, t, fill), px(e - t, s, t, L, fill),
+    // bottom-left
+    px(s, e - t, L, t, fill), px(s, e - L, t, L, fill),
+    // bottom-right
+    px(e - L, e - t, L, t, fill), px(e - t, e - L, t, L, fill),
+  ].join('');
+}
+
+// Pixel panda face — ONLY eyebrows + eye dots + nose (no head, no ears, no mouth)
+// This matches the reference icon: 它是一张"符号化"的熊猫表情, 不是完整熊猫
+// Canvas inside the white plate: ~16 cols × 10 rows
+function panda(cx, cy, { ink = '#1a1a1a', scale = 1 } = {}) {
+  const S = scale;
+  const r = (x, y, w, h) => `<rect x="${(cx+x*S)*G}" y="${(cy+y*S)*G}" width="${w*S*G}" height="${h*S*G}" fill="${ink}" shape-rendering="crispEdges"/>`;
+  // 14 cols wide × 8 rows tall — centered composition
+  return [
+    // Left eyebrow — L shape (┐ rotated): horizontal top + vertical drop on outer side
+    r(1, 0, 3, 1),          // ─── top bar
+    r(1, 0, 1, 2),          // │ left drop (outer)
+    // Right eyebrow — mirror L (┌): horizontal top + vertical drop on outer side
+    r(10, 0, 3, 1),         // ─── top bar
+    r(12, 0, 1, 2),         // │ right drop (outer)
+    // Left eye — single pixel directly below the gap of the eyebrow
+    r(2, 3, 1, 1),
+    // Right eye — mirror
+    r(11, 3, 1, 1),
+    // Nose — vertical stack making a soft triangle feel
+    //   ▓▓     (row 5)
+    //   ▓▓     (row 6)   ← slightly wider feels like a nose
+    r(6, 5, 2, 1),
+    r(6, 6, 2, 1),
+    // Small mouth dot under nose (optional, keeps face balanced)
+    r(6, 7, 2, 1),
+  ].join('');
+}
+
+// ─── Backgrounds ─────────────────────────────────────────────
+const bgSolid = (c) => `<rect width="${ICON}" height="${ICON}" fill="${c}"/>`;
+const bgGradient = (a, b, dir = 'vert') => `
+  <defs><linearGradient id="g_${a.slice(1)}_${b.slice(1)}" x1="0" y1="0" x2="${dir==='vert'?0:1}" y2="${dir==='vert'?1:1}">
+    <stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/>
+  </linearGradient></defs>
+  <rect width="${ICON}" height="${ICON}" fill="url(#g_${a.slice(1)}_${b.slice(1)})"/>`;
+
+// ═════════════════════════════════════════════════════════════
+// Six variants
+// ═════════════════════════════════════════════════════════════
+
+// Shared inner "photo plate" + centered panda
+// panda() draws a 13-col × 8-row block, so to center in a 20×14 plate starting at (6,10):
+//   plate center x = 16, block width = 13 → start col = 16 - 6 = 10 (give or take)
+//   plate center y = 17, block height = 8 → start row = 17 - 4 = 13
+const PLATE = { x: 6, y: 10, w: 20, h: 14 };
+const PANDA_POS = { x: 9.5, y: 13 };  // visually centered inside plate
+
+function plate(fill = '#FFFFFF') {
+  return `<rect x="${PLATE.x*G}" y="${PLATE.y*G}" width="${PLATE.w*G}" height="${PLATE.h*G}" fill="${fill}" shape-rendering="crispEdges"/>`;
+}
+
+// 01 · Faithful remake — 参考图 1:1: 灰白渐变 + 黑取景框 + 居中白板块熊猫像素脸
+function iconA() {
+  return `<svg viewBox="0 0 ${ICON} ${ICON}" xmlns="http://www.w3.org/2000/svg">
+    ${bgGradient('#FFFFFF', '#CFCAC2', 'diag')}
+    ${viewfinder('#1a1a1a', 3)}
+    ${plate('#FFFFFF')}
+    ${panda(PANDA_POS.x, PANDA_POS.y)}
+  </svg>`;
+}
+
+// 02 · 奶油背景版 — 把白灰换成米白→焦糖，仍然像素熊猫
+function iconB() {
+  return `<svg viewBox="0 0 ${ICON} ${ICON}" xmlns="http://www.w3.org/2000/svg">
+    ${bgGradient('#FFF7E8', '#E8B89B', 'diag')}
+    ${viewfinder('#3D2E27', 3)}
+    ${plate('#FFFAF0')}
+    ${panda(PANDA_POS.x, PANDA_POS.y, { ink: '#3D2E27' })}
+  </svg>`;
+}
+
+// 03 · 纯焦糖 + 留白卡片 — 工具感更强
+function iconC() {
+  return `<svg viewBox="0 0 ${ICON} ${ICON}" xmlns="http://www.w3.org/2000/svg">
+    ${bgSolid('#C68B5F')}
+    ${viewfinder('#FFFAF0', 3)}
+    ${plate('#FFFAF0')}
+    ${panda(PANDA_POS.x, PANDA_POS.y, { ink: '#3D2E27' })}
+  </svg>`;
+}
+
+// 04 · 全屏大熊猫（不要取景框 · 纯脸 · scale 2.2 铺满）
+// 原始脸是 13 宽 × 8 高；scale=2.2 → 28.6 × 17.6。
+// 画布 32 × 32，水平居中 start x = (32-28.6)/2 ≈ 1.7；垂直居中 start y = (32-17.6)/2 ≈ 7.2
+function iconD() {
+  return `<svg viewBox="0 0 ${ICON} ${ICON}" xmlns="http://www.w3.org/2000/svg">
+    ${bgGradient('#FFFFFF', '#B8B0A2', 'diag')}
+    ${panda(1.7, 7.2, { ink: '#1a1a1a', scale: 2.2 })}
+  </svg>`;
+}
+
+// 05 · 竹绿版 + 像素熊猫
+function iconE() {
+  return `<svg viewBox="0 0 ${ICON} ${ICON}" xmlns="http://www.w3.org/2000/svg">
+    ${bgGradient('#D4E4C4', '#8FA87A', 'vert')}
+    ${viewfinder('#2F3D28', 3)}
+    ${plate('#FFFAF0')}
+    ${panda(PANDA_POS.x, PANDA_POS.y, { ink: '#2F3D28' })}
+  </svg>`;
+}
+
+// 06 · 反转深色 — 深棕底 + 浅米白像素熊猫
+function iconF() {
+  return `<svg viewBox="0 0 ${ICON} ${ICON}" xmlns="http://www.w3.org/2000/svg">
+    ${bgGradient('#3D2E27', '#5D453A', 'diag')}
+    ${viewfinder('#FFFAF0', 3)}
+    ${plate('#FFFAF0')}
+    ${panda(PANDA_POS.x, PANDA_POS.y, { ink: '#3D2E27' })}
+  </svg>`;
+}
+
+const OPTIONS = [
+  { id: 'a', name: '01 · 原版复刻', tag: 'A', desc: '灰白渐变 + 黑取景框 + 白板像素熊猫 · 跟你参考图几乎一致 · 最保险', fn: iconA },
+  { id: 'b', name: '02 · 奶油版',   tag: 'B', desc: '背景换成 App 内奶油色 + 深褐取景框 · 与 App 主题完全同源', fn: iconB },
+  { id: 'c', name: '03 · 焦糖实心', tag: 'C', desc: '纯焦糖背景 + 米白取景框 + 白卡片熊猫 · 在桌面上最跳', fn: iconC },
+  { id: 'd', name: '04 · 大脸谱',   tag: 'D', desc: '去掉取景框 · 像素熊猫铺满 · 最可爱 · 但工具语义弱', fn: iconD },
+  { id: 'e', name: '05 · 竹绿版',   tag: 'E', desc: '竹林绿 + 深绿取景框 · 有中国式熊猫身份感', fn: iconE },
+  { id: 'f', name: '06 · 深色反转', tag: 'F', desc: '深棕底 + 浅米白像素熊猫 · 最有品质感 · 适合深色桌面', fn: iconF },
+];
+
+const grid = document.getElementById('grid');
+OPTIONS.forEach(o => {
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML = `
+    <h3><span class="tag">${o.tag}</span>${o.name.replace(/^\d+ · /, '')}</h3>
+    <p>${o.desc}</p>
+    <div class="icon-row">
+      <div class="w big">${o.fn()}</div>
+      <div class="w mid">${o.fn()}</div>
+      <div class="w sm">${o.fn()}</div>
+    </div>
+  `;
+  grid.appendChild(card);
+});
+
+// Home-row preview
+const home = document.getElementById('homerow');
+OPTIONS.forEach(o => {
+  const w = document.createElement('div');
+  w.className = 'cell';
+  w.innerHTML = `<div class="i">${o.fn()}</div><div class="l">${o.tag} · PandaVault</div>`;
+  home.appendChild(w);
+});
+</script>
+</body>
+</html>
