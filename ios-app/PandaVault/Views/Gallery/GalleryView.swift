@@ -79,7 +79,7 @@ struct GalleryView: View {
                     onShare: { Task { await batchShare() } }
                 )
             }
-            // 批量工具栏单独 overlay — 避免 NavigationStack 吞 safeAreaInset 导致被 Tab Bar 盖住
+            // 批量工具栏单独 overlay — 配合 appState.tabBarHidden 让 CTabBar 让位
             .overlay(alignment: .bottom) {
                 if isSelecting && !selectedIds.isEmpty {
                     FloatingBatchBar(
@@ -91,6 +91,13 @@ struct GalleryView: View {
                     )
                 }
             }
+            .onChange(of: isSelecting) { _, newValue in
+                appState.tabBarHidden = newValue && !selectedIds.isEmpty
+            }
+            .onChange(of: selectedIds) { _, newValue in
+                appState.tabBarHidden = isSelecting && !newValue.isEmpty
+            }
+            .onDisappear { appState.tabBarHidden = false }
             .confirmationDialog(
                 "确定删除 \(selectedIds.count) 个素材？",
                 isPresented: $showDeleteConfirm,

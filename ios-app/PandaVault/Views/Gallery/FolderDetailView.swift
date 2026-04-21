@@ -200,6 +200,13 @@ struct FolderDetailView: View {
                 )
             }
         }
+        .onChange(of: isSelecting) { _, newValue in
+            appState.tabBarHidden = newValue && !selectedIds.isEmpty
+        }
+        .onChange(of: selectedIds) { _, newValue in
+            appState.tabBarHidden = isSelecting && !newValue.isEmpty
+        }
+        .onDisappear { appState.tabBarHidden = false }
         .confirmationDialog(
             "确定删除 \(selectedIds.count) 个素材？",
             isPresented: $showBatchDeleteConfirm,

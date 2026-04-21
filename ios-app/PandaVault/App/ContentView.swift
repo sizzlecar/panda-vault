@@ -170,24 +170,33 @@ struct MainTabView: View {
     @State private var selectedTab: MainTab = .library
 
     var body: some View {
-        Group {
-            switch selectedTab {
-            case .library:  GalleryView()
-            case .upload:   UploadView()
-            case .settings: SettingsView()
-            }
+        ZStack {
+            // ★ 三个 Tab 同时挂载，通过 opacity 切换，避免每次切 tab 全树重建
+            // （会把 timeline/folders 重新拉一遍、缩略图重新下载，卡顿很明显）
+            GalleryView()
+                .opacity(selectedTab == .library ? 1 : 0)
+                .allowsHitTesting(selectedTab == .library)
+            UploadView()
+                .opacity(selectedTab == .upload ? 1 : 0)
+                .allowsHitTesting(selectedTab == .upload)
+            SettingsView()
+                .opacity(selectedTab == .settings ? 1 : 0)
+                .allowsHitTesting(selectedTab == .settings)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(PV.bg.ignoresSafeArea())
-        // Tab bar 用 safeAreaInset，让每个屏幕的 .safeAreaInset(.bottom)
-        // （例如批量操作工具栏）能自动堆叠在它上面，不会重合
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            CTabBar(selected: $selectedTab)
-                .padding(.horizontal, 16)
-                .padding(.top, 4)
-                .padding(.bottom, 6)
-                .background(PV.bg)
+            // 批量选择态下隐藏 CTabBar，让 FloatingBatchBar 占底部
+            if !appState.tabBarHidden {
+                CTabBar(selected: $selectedTab)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 4)
+                    .padding(.bottom, 6)
+                    .background(PV.bg)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
         }
+        .animation(.easeInOut(duration: 0.2), value: appState.tabBarHidden)
     }
 }
 

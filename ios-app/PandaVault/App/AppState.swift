@@ -11,6 +11,9 @@ final class AppState: ObservableObject {
         }
     }
     @Published var isConnected = false
+    /// 子屏进入批量选择时置 true，MainTabView 据此隐藏浮动 CTabBar，让
+    /// FloatingBatchBar 占据底部（避免二者重合）
+    @Published var tabBarHidden = false
 
     let downloadManager = DownloadManager()
     private var _api: APIService!

@@ -3,6 +3,7 @@ import SwiftUI
 struct TrashView: View {
     let api: APIService
 
+    @EnvironmentObject var appState: AppState
     @State private var assets: [Asset] = []
     @State private var isLoading = false
     @State private var isSelecting = false
@@ -35,6 +36,13 @@ struct TrashView: View {
                 trashBottomBar
             }
         }
+        .onChange(of: isSelecting) { _, newValue in
+            appState.tabBarHidden = newValue && !selectedIds.isEmpty
+        }
+        .onChange(of: selectedIds) { _, newValue in
+            appState.tabBarHidden = isSelecting && !newValue.isEmpty
+        }
+        .onDisappear { appState.tabBarHidden = false }
         .confirmationDialog(
             "永久删除 \(selectedIds.count) 个素材？\n文件将从磁盘清除，无法恢复。",
             isPresented: $showDeleteConfirm,
