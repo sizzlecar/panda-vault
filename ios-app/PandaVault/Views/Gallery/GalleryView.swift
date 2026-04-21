@@ -35,19 +35,15 @@ struct GalleryView: View {
                 isSelecting: $isSelecting,
                 selectedIds: $selectedIds,
                 selectedAsset: $selectedAsset,
-                selectedFolder: $selectedFolder
+                selectedFolder: $selectedFolder,
+                imageSearchItem: $imageSearchItem
             )
             .background(PV.bg.ignoresSafeArea())
             .scrollContentBackground(.hidden)
-            .navigationTitle("素材库")
-            .toolbarBackground(PV.bg, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .searchable(text: $vm.searchText, prompt: "搜索素材…")
-            .onSubmit(of: .search) { Task { await vm.search() } }
+            .toolbar(.hidden, for: .navigationBar)
             .onChange(of: vm.searchText) { _, val in
                 if val.isEmpty { vm.clearImageSearch() }
             }
-            .toolbar { galleryToolbar }
             .onChange(of: imageSearchItem) { _, item in
                 handleImageSearch(item)
             }
@@ -156,41 +152,6 @@ struct GalleryView: View {
         }
     }
 
-    // MARK: - Toolbar
-
-    @ToolbarContentBuilder
-    private var galleryToolbar: some ToolbarContent {
-        ToolbarItem(placement: .topBarLeading) {
-            PhotosPicker(selection: $imageSearchItem, matching: .images) {
-                Image(systemName: "camera.viewfinder").foregroundStyle(PV.cyan)
-            }
-        }
-        ToolbarItem(placement: .topBarTrailing) {
-            HStack(spacing: 12) {
-                if isSelecting {
-                    Button {
-                        let allIds = Set(vm.allAssetsOrdered.map(\.id))
-                        if selectedIds == allIds {
-                            selectedIds.removeAll()
-                        } else {
-                            selectedIds = allIds
-                        }
-                    } label: {
-                        Text(selectedIds.count == vm.allAssetsOrdered.count ? "取消全选" : "全选")
-                            .foregroundStyle(PV.cyan)
-                    }
-                }
-                Button {
-                    isSelecting.toggle()
-                    if !isSelecting { selectedIds.removeAll() }
-                } label: {
-                    Text(isSelecting ? "完成" : "选择")
-                        .foregroundStyle(PV.cyan)
-                }
-            }
-        }
-    }
-
     // MARK: - Actions
 
     private func handleImageSearch(_ item: PhotosPickerItem?) {
@@ -287,12 +248,64 @@ private struct GalleryContentView: View {
     @Binding var selectedIds: Set<UUID>
     @Binding var selectedAsset: Asset?
     @Binding var selectedFolder: Folder?
+    @Binding var imageSearchItem: PhotosPickerItem?
 
     var body: some View {
         VStack(spacing: 0) {
+            // 顶部 actions：图搜图 / 选择
+            HStack(spacing: 14) {
+                PhotosPicker(selection: $imageSearchItem, matching: .images) {
+                    Image(systemName: "camera.viewfinder")
+                        .font(.system(size: 19))
+                        .foregroundStyle(PV.caramel)
+                        .frame(width: 34, height: 34)
+                }
+                Spacer()
+                if isSelecting {
+                    Button {
+                        let allIds = Set(vm.allAssetsOrdered.map(\.id))
+                        if selectedIds == allIds { selectedIds.removeAll() }
+                        else { selectedIds = allIds }
+                    } label: {
+                        Text(selectedIds.count == vm.allAssetsOrdered.count ? "取消全选" : "全选")
+                            .font(PVFont.body(14.5, weight: .medium))
+                            .foregroundStyle(PV.caramel)
+                    }
+                }
+                Button {
+                    isSelecting.toggle()
+                    if !isSelecting { selectedIds.removeAll() }
+                } label: {
+                    Text(isSelecting ? "完成" : "选择")
+                        .font(PVFont.body(14.5, weight: .medium))
+                        .foregroundStyle(PV.caramel)
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 4)
+            .frame(height: 44)
+
+            // 大标题 "素材库" Fraunces 34pt
+            HStack {
+                Text("素材库")
+                    .font(PVFont.display(34, weight: .medium))
+                    .foregroundStyle(PV.ink)
+                    .kerning(-0.6)
+                Spacer()
+            }
+            .padding(.horizontal, 20)
+
+            // 搜索胶囊
+            CSearchPill(text: $vm.searchText, prompt: "搜索素材…") {
+                Task { await vm.search() }
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 10)
+
+            // Tab 切换（时间 / 文件夹）
             CreamSegmented(selection: $viewMode)
                 .padding(.horizontal, 20)
-                .padding(.vertical, 10)
+                .padding(.top, 12)
 
             switch viewMode {
             case .timeline:
@@ -711,7 +724,7 @@ private struct GalleryFoldersView: View {
     }
 
     private var sortBar: some View {
-        HStack {
+        HStack(spacing: 8) {
             Menu {
                 ForEach(FolderSortOption.allCases) { opt in
                     Button {
@@ -725,24 +738,29 @@ private struct GalleryFoldersView: View {
                     }
                 }
             } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "arrow.up.arrow.down.square")
+                HStack(spacing: 5) {
+                    Image(systemName: "arrow.up.arrow.down")
+                        .font(.system(size: 11, weight: .semibold))
                     Text(sortOption.rawValue)
-                        .font(.system(.caption, design: .monospaced).bold())
+                        .font(PVFont.body(12, weight: .semibold))
                 }
-                .foregroundStyle(PV.cyan)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(PV.cyan.opacity(0.08), in: Capsule())
+                .foregroundStyle(PV.caramel)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(PV.caramel.opacity(0.13), in: Capsule())
             }
             Spacer()
         }
-        .padding(.horizontal)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 20)
+        .padding(.top, 12)
+        .padding(.bottom, 6)
     }
 
     private var foldersGrid: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 12)], spacing: 12) {
+        LazyVGrid(
+            columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)],
+            spacing: 12
+        ) {
             ForEach(vm.folders.sorted(by: sortOption)) { folder in
                 Button { selectedFolder = folder } label: {
                     FolderCard(folder: folder, api: api)
@@ -750,7 +768,8 @@ private struct GalleryFoldersView: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding()
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
     }
 }
 
@@ -1052,19 +1071,72 @@ struct GalleryBatchToolbar: View {
     }
 }
 
-// MARK: - Folder Card
+// MARK: - Folder Card (Cream 2-col)
 
 struct FolderCard: View {
     let folder: Folder
     let api: APIService
 
+    private func relativeTime(_ date: Date?) -> String {
+        guard let date else { return "" }
+        let s = Int(Date().timeIntervalSince(date))
+        if s < 3600 { return "刚刚" }
+        if s < 86400 { return "今天" }
+        if s < 86400 * 2 { return "昨天" }
+        if s < 86400 * 7 { return "\(s / 86400) 天前" }
+        let fmt = DateFormatter(); fmt.dateFormat = "M月d日"
+        return fmt.string(from: date)
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 0) {
             folderCover
-            folderInfo
+            VStack(alignment: .leading, spacing: 3) {
+                Text(folder.name)
+                    .font(PVFont.body(14, weight: .semibold))
+                    .foregroundStyle(PV.ink)
+                    .kerning(-0.1)
+                    .lineLimit(1)
+                HStack(spacing: 5) {
+                    if folder.assetCount == nil || folder.totalBytes == nil {
+                        Text("计算中…")
+                            .font(PVFont.mono(11))
+                            .foregroundStyle(PV.muted)
+                    } else {
+                        let when = relativeTime(folder.updatedAt)
+                        if !when.isEmpty {
+                            Text(when)
+                                .font(PVFont.body(11))
+                                .foregroundStyle(PV.sub)
+                            Text("·")
+                                .font(PVFont.body(11))
+                                .foregroundStyle(PV.muted.opacity(0.5))
+                        }
+                        Text("\(folder.assetCount ?? 0)")
+                            .font(PVFont.mono(11))
+                            .foregroundStyle(PV.sub)
+                        if let total = folder.totalBytes, total > 0 {
+                            Text("·")
+                                .font(PVFont.body(11))
+                                .foregroundStyle(PV.muted.opacity(0.5))
+                            Text(total.humanReadableBytes)
+                                .font(PVFont.mono(11))
+                                .foregroundStyle(PV.sub)
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 4)
+            .padding(.top, 8)
+            .padding(.bottom, 5)
         }
         .padding(6)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 4))
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(PV.line, lineWidth: 1)
+        )
     }
 
     @ViewBuilder
@@ -1074,50 +1146,21 @@ struct FolderCard: View {
                 if let image = phase.image {
                     image.resizable().aspectRatio(contentMode: .fill)
                 } else {
-                    Color(.secondarySystemFill)
+                    PV.muted.opacity(0.12)
                 }
             }
-            .frame(height: 90)
+            .frame(height: 96)
             .clipped()
-            .clipShape(RoundedRectangle(cornerRadius: 3))
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         } else {
-            RoundedRectangle(cornerRadius: 3)
-                .fill(Color(.secondarySystemFill))
-                .frame(height: 90)
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(PV.muted.opacity(0.12))
+                .frame(height: 96)
                 .overlay {
-                    Image(systemName: "folder.fill")
-                        .font(.title3)
-                        .foregroundStyle(.tertiary)
+                    Image(systemName: "folder")
+                        .font(.system(size: 22))
+                        .foregroundStyle(PV.muted)
                 }
-        }
-    }
-
-    private var folderInfo: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(folder.name)
-                .font(.system(.caption, design: .monospaced).bold())
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-            HStack(spacing: 6) {
-                if folder.assetCount == nil || folder.totalBytes == nil {
-                    // 后端懒计算中
-                    Text("计算中…")
-                        .font(.system(.caption2, design: .monospaced))
-                        .foregroundStyle(.tertiary)
-                } else {
-                    Text("\(folder.assetCount ?? 0) items")
-                        .font(.system(.caption2, design: .monospaced))
-                        .foregroundStyle(.tertiary)
-                    if let total = folder.totalBytes, total > 0 {
-                        Text("·")
-                            .font(.system(.caption2, design: .monospaced))
-                            .foregroundStyle(.tertiary)
-                        Text(total.humanReadableBytes)
-                            .font(.system(.caption2, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
         }
     }
 }

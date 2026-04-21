@@ -70,7 +70,7 @@
 		C3689C5DEE8DB231B932B5CD /* GalleryViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GalleryViewModel.swift; sourceTree = "<group>"; };
 		C459592961D64B41B4E88FB7 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		C760A2FC8090E91B047AF6B6 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
-		E5144C57BD849EC9B141765E /* PandaVault.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = PandaVault.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		E5144C57BD849EC9B141765E /* PandaVault.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PandaVault.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E7CE284746159FD8561B44C5 /* LogReporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogReporter.swift; sourceTree = "<group>"; };
 		E9CAAA06C9B5E48B4F4DCB17 /* APIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIService.swift; sourceTree = "<group>"; };
 		EEF197138072CC68AB52D639 /* Asset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Asset.swift; sourceTree = "<group>"; };
@@ -270,7 +270,6 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					4E30D767888DB7EA351F5588 = {
-						DevelopmentTeam = "";
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -352,6 +351,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = 47HJ8X7954;
 				INFOPLIST_FILE = PandaVault/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -369,6 +369,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = 47HJ8X7954;
 				INFOPLIST_FILE = PandaVault/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

@@ -62,15 +62,16 @@ struct TrashView: View {
             }
         } label: {
             AssetThumbnail(asset: asset, api: api)
-                .overlay(alignment: .bottom) {
+                .overlay(alignment: .topLeading) {
                     if let d = asset.deletedAt {
                         Text(daysRemaining(d))
-                            .font(.system(size: 9, design: .monospaced))
+                            .font(PVFont.mono(10, weight: .medium))
                             .foregroundStyle(.white)
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 2)
-                            .frame(maxWidth: .infinity)
-                            .background(.black.opacity(0.6))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(PV.berry, in: Capsule())
+                            .padding(6)
+                            .shadow(color: .black.opacity(0.2), radius: 2)
                     }
                 }
                 .overlay {

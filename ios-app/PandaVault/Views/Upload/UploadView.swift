@@ -27,26 +27,28 @@ struct UploadView: View {
 
     var body: some View {
         NavigationStack {
-                List {
-                    exportSection
-                    folderSection
-                    pickSection
-                    uploadStatusSections
-                }
-                
-            .scrollContentBackground(.hidden)
-            .background(PV.bg.ignoresSafeArea())
-            .toolbarBackground(PV.bg, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .navigationTitle("上传")
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { showPicker = true } label: {
-                        Image(systemName: "plus")
-                            .foregroundStyle(PV.caramel)
+            ScrollView {
+                VStack(spacing: 18) {
+                    CLargeTitle("上传") {
+                        Button { showPicker = true } label: {
+                            Image(systemName: "plus")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundStyle(PV.caramel)
+                        }
                     }
+                    .padding(.top, 2)
+
+                    if isExporting { exportBanner }
+                    folderTargetCard
+                    pickFromAlbumCard
+                    uploadStatusCards
+
+                    Spacer(minLength: 100)
                 }
+                .padding(.bottom, 16)
             }
+            .background(PV.bg.ignoresSafeArea())
+            .toolbar(.hidden, for: .navigationBar)
             .sheet(item: $activeSheet) { sheet in
                 switch sheet {
                 case .folderPicker:
@@ -80,85 +82,151 @@ struct UploadView: View {
         }
     }
 
-    // MARK: - Sub Sections
+    // MARK: - Cream Cards
 
-    @ViewBuilder
-    private var exportSection: some View {
-        if isExporting {
-            Section {
-                HStack {
-                    ProgressView().tint(PV.cyan)
-                    Text(exportProgress)
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(.secondary)
+    private var exportBanner: some View {
+        HStack(spacing: 10) {
+            ProgressView().tint(PV.caramel)
+            Text(exportProgress)
+                .font(PVFont.body(13))
+                .foregroundStyle(PV.sub)
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(PV.caramel.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(.horizontal, 20)
+    }
+
+    private var folderTargetCard: some View {
+        creamCard(header: "目标位置") {
+            VStack(spacing: 0) {
+                Button { activeSheet = .folderPicker } label: {
+                    HStack(spacing: 12) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 9).fill(PV.caramel.opacity(0.13))
+                            Image(systemName: "folder")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(PV.caramel)
+                        }
+                        .frame(width: 30, height: 30)
+                        Text("上传到")
+                            .font(PVFont.body(14.5))
+                            .foregroundStyle(PV.ink)
+                        Spacer()
+                        Text(selectedFolderPath)
+                            .font(PVFont.body(13))
+                            .foregroundStyle(PV.sub)
+                            .lineLimit(1)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(PV.muted)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 11)
                 }
+                .buttonStyle(.plain)
+
+                Rectangle().fill(PV.divider).frame(height: 0.5).padding(.leading, 58)
+
+                Button { newFolderName = ""; activeSheet = .newFolder } label: {
+                    HStack(spacing: 12) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 9).fill(PV.caramel.opacity(0.13))
+                            Image(systemName: "folder.badge.plus")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(PV.caramel)
+                        }
+                        .frame(width: 30, height: 30)
+                        Text("新建文件夹")
+                            .font(PVFont.body(14.5))
+                            .foregroundStyle(PV.caramel)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 11)
+                }
+                .buttonStyle(.plain)
             }
         }
     }
 
-    private var folderSection: some View {
-        Section {
-            Button {
-                activeSheet = .folderPicker
-            } label: {
-                HStack {
-                    Text("上传到")
-                        .foregroundStyle(.primary)
-                    Spacer()
-                    Text(selectedFolderPath)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                    Image(systemName: "chevron.right")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                }
-            }
-            Button { newFolderName = ""; activeSheet = .newFolder } label: {
-                Label("新建文件夹", systemImage: "folder.badge.plus")
-                    .foregroundStyle(PV.cyan)
-            }
-        } header: {
-            PixelSectionHeader(title: "目标位置")
-        }
-    }
-
-    private var pickSection: some View {
-        Section {
+    private var pickFromAlbumCard: some View {
+        VStack(spacing: 0) {
             Button { showPicker = true } label: {
-                Label("从相册选择", systemImage: "photo.on.rectangle.angled")
-                    .foregroundStyle(PV.green)
+                HStack(spacing: 12) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 9).fill(PV.mint.opacity(0.2))
+                        Image(systemName: "photo.on.rectangle.angled")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(PV.bean)
+                    }
+                    .frame(width: 32, height: 32)
+                    Text("从相册选择")
+                        .font(PVFont.body(14.5, weight: .medium))
+                        .foregroundStyle(PV.ink)
+                    Spacer()
+                    Text("最多 50 张")
+                        .font(PVFont.body(11.5))
+                        .foregroundStyle(PV.muted)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+                .background(Color.white)
+                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .strokeBorder(PV.line, lineWidth: 1)
+                )
             }
+            .buttonStyle(.plain)
         }
+        .padding(.horizontal, 20)
     }
 
     @ViewBuilder
-    private var uploadStatusSections: some View {
+    private var uploadStatusCards: some View {
         if !uploadManager.tasks.isEmpty {
-            Section {
-                UploadProgressSummary(manager: uploadManager)
-            } header: {
-                PixelSectionHeader(title: "上传进度")
-            }
+            progressSummaryCard
 
             let active = uploadManager.activeTasks
             if !active.isEmpty {
-                Section {
-                    ForEach(active) { UploadTaskRow(task: $0) }
-                } header: {
-                    PixelSectionHeader(title: "进行中", count: "\(active.count)")
+                creamCard(header: "进行中", headerSuffix: "\(active.count)") {
+                    VStack(spacing: 0) {
+                        ForEach(Array(active.enumerated()), id: \.element.id) { idx, task in
+                            if idx > 0 { Rectangle().fill(PV.divider).frame(height: 0.5).padding(.leading, 44) }
+                            UploadTaskRow(task: task)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
+                        }
+                    }
                 }
             }
 
             let failed = uploadManager.failedTasks
             if !failed.isEmpty {
-                Section {
-                    ForEach(failed) { UploadTaskRow(task: $0) }
-                    Button { uploadManager.retryFailed() } label: {
-                        Label("重试失败项", systemImage: "arrow.clockwise")
-                            .foregroundStyle(PV.orange)
+                creamCard(header: "失败", headerSuffix: "\(failed.count)") {
+                    VStack(spacing: 0) {
+                        ForEach(Array(failed.enumerated()), id: \.element.id) { idx, task in
+                            if idx > 0 { Rectangle().fill(PV.divider).frame(height: 0.5).padding(.leading, 44) }
+                            UploadTaskRow(task: task)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
+                        }
+                        Rectangle().fill(PV.divider).frame(height: 0.5)
+                        Button { uploadManager.retryFailed() } label: {
+                            HStack(spacing: 6) {
+                                Spacer()
+                                Image(systemName: "arrow.clockwise")
+                                Text("重试失败项")
+                                    .font(PVFont.body(14, weight: .semibold))
+                                Spacer()
+                            }
+                            .foregroundStyle(PV.peach)
+                            .padding(.vertical, 13)
+                        }
                     }
-                } header: {
-                    PixelSectionHeader(title: "失败", count: "\(failed.count)")
                 }
             }
 
@@ -168,12 +236,52 @@ struct UploadView: View {
                 return false
             }
             if !doneItems.isEmpty {
-                DisclosureGroup {
-                    ForEach(doneItems) { UploadTaskRow(task: $0) }
-                } label: {
-                    PixelSectionHeader(title: "已完成", count: "\(doneItems.count)")
-                }
+                DoneUploadsCard(tasks: doneItems)
             }
+        }
+    }
+
+    private var progressSummaryCard: some View {
+        creamCard(header: "上传进度") {
+            UploadProgressSummary(manager: uploadManager)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+        }
+    }
+
+    // MARK: - Card shell
+
+    @ViewBuilder
+    private func creamCard<Content: View>(
+        header: String? = nil,
+        headerSuffix: String? = nil,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if let header {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(header.uppercased())
+                        .font(PVFont.sectionHeader)
+                        .tracking(1.5)
+                        .foregroundStyle(PV.muted)
+                    if let suffix = headerSuffix {
+                        Text(suffix)
+                            .font(PVFont.mono(11))
+                            .foregroundStyle(PV.muted)
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 8)
+            }
+            content()
+                .background(Color.white)
+                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .strokeBorder(PV.line, lineWidth: 1)
+                )
+                .padding(.horizontal, 20)
         }
     }
 
@@ -243,6 +351,76 @@ struct UploadView: View {
         }
     }
 
+}
+
+// MARK: - 已完成上传卡片（可折叠）
+
+private struct DoneUploadsCard: View {
+    let tasks: [UploadTask]
+    @State private var expanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("已完成".uppercased())
+                    .font(PVFont.sectionHeader)
+                    .tracking(1.5)
+                    .foregroundStyle(PV.muted)
+                Text("\(tasks.count)")
+                    .font(PVFont.mono(11))
+                    .foregroundStyle(PV.muted)
+                Spacer()
+            }
+            .padding(.horizontal, 24)
+            .padding(.bottom, 8)
+
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) { expanded.toggle() }
+            } label: {
+                HStack {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 15))
+                        .foregroundStyle(PV.mint)
+                    Text(expanded ? "收起" : "\(tasks.count) 项已完成 · 点击展开")
+                        .font(PVFont.body(13.5))
+                        .foregroundStyle(PV.sub)
+                    Spacer()
+                    Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(PV.muted)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 13)
+            }
+            .buttonStyle(.plain)
+            .background(Color.white)
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .strokeBorder(PV.line, lineWidth: 1)
+            )
+            .padding(.horizontal, 20)
+
+            if expanded {
+                VStack(spacing: 0) {
+                    ForEach(Array(tasks.enumerated()), id: \.element.id) { idx, task in
+                        if idx > 0 { Rectangle().fill(PV.divider).frame(height: 0.5).padding(.leading, 44) }
+                        UploadTaskRow(task: task)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                    }
+                }
+                .background(Color.white)
+                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .strokeBorder(PV.line, lineWidth: 1)
+                )
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
+            }
+        }
+    }
 }
 
 // MARK: - Upload Task Row

@@ -296,6 +296,78 @@ struct CButtonStyle: ButtonStyle {
     }
 }
 
+// ========== 大标题（Fraunces 34pt）==========
+// 对应 cream.jsx 里所有 "素材库 / 上传 / 设置" 等页面顶部的大标题
+// 配合 `.toolbar(.hidden, for: .navigationBar)` 一起用，替代系统 `.navigationTitle`
+
+struct CLargeTitle: View {
+    let text: String
+    var trailing: (() -> AnyView)? = nil
+
+    init(_ text: String) { self.text = text }
+
+    init<Trailing: View>(_ text: String, @ViewBuilder trailing: @escaping () -> Trailing) {
+        self.text = text
+        self.trailing = { AnyView(trailing()) }
+    }
+
+    var body: some View {
+        HStack(alignment: .lastTextBaseline) {
+            Text(text)
+                .font(PVFont.display(34, weight: .medium))
+                .foregroundStyle(PV.ink)
+                .kerning(-0.6)
+            Spacer()
+            if let t = trailing { t() }
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 4)
+        .padding(.bottom, 2)
+    }
+}
+
+// ========== Cream 搜索胶囊 ==========
+
+struct CSearchPill: View {
+    @Binding var text: String
+    var prompt: String = "搜索素材…"
+    var onSubmit: (() -> Void)? = nil
+
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(PV.muted)
+            TextField(prompt, text: $text)
+                .font(PVFont.body(13.5))
+                .tint(PV.caramel)
+                .foregroundStyle(PV.ink)
+                .focused($focused)
+                .submitLabel(.search)
+                .onSubmit { onSubmit?() }
+            if !text.isEmpty {
+                Button {
+                    text = ""
+                    onSubmit?()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 15))
+                        .foregroundStyle(PV.muted)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 36)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(PV.ink.opacity(0.065))
+        )
+    }
+}
+
 // ========== 兼容层 ==========
 // 下列组件在旧代码里大量使用；换皮但保留 API，避免一次性大改。
 // 迁移完后可以逐步替换成新组件（CChip/CSection 等）。
