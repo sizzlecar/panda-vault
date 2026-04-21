@@ -256,6 +256,25 @@ final class APIService: Sendable {
         try validateResponse(response)
     }
 
+    /// 下载后端已经打包好的 zip（`/exports/<filename>`）到本地 tmp
+    /// 返回本地 URL 给 UIActivityViewController 用
+    func downloadExport(info: ExportInfo) async throws -> URL {
+        // downloadPath 形如 "/exports/xxx.zip"
+        guard let url = makeURL(info.downloadPath) else { throw APIError.invalidURL }
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 3600
+        config.timeoutIntervalForResource = 7200
+        let longSession = URLSession(configuration: config)
+        let (tempURL, response) = try await longSession.download(for: URLRequest(url: url))
+        try validateResponse(response)
+        // 搬到带 .zip 扩展名的 tmp URL（UIActivityViewController 依赖后缀识别类型）
+        let dest = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(UUID().uuidString)_\(info.filename)")
+        try? FileManager.default.removeItem(at: dest)
+        try FileManager.default.moveItem(at: tempURL, to: dest)
+        return dest
+    }
+
     // MARK: - Upload
 
     private let largeFileThreshold: Int64 = 50 * 1024 * 1024 // 50MB

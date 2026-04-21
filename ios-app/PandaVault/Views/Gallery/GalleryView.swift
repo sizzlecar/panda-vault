@@ -1050,7 +1050,7 @@ struct FloatingBatchBar: View {
                         Button {
                             onExport()
                         } label: {
-                            Label("导出剪辑工程包", systemImage: "shippingbox")
+                            Label("打包分享", systemImage: "shippingbox")
                         }
                     } label: {
                         VStack(spacing: 3) {

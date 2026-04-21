@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// 剪辑工程包导出 —— cream sheet
-/// 场景：Gallery / FolderDetail 选一批资产 → 批量栏 ⋯ → 导出剪辑工程包
-/// 后端生成 zip（无上限，支持 GB 级），Mac 用户在 Finder 里直接打开 exports/ 目录即可用
+/// 流程：用户选一批 asset → 输包名 → 打包 → 下载到手机 → 弹 iOS 系统分享
+/// 系统分享里：AirDrop / 微信 / 存到文件 app / 剪映直接接收 随意选
 struct ExportSheet: View {
     let api: APIService
     let assetIds: [UUID]
@@ -11,19 +11,32 @@ struct ExportSheet: View {
     @FocusState private var focused: Bool
 
     @State private var name = ""
-    @State private var isExporting = false
-    @State private var result: ExportInfo?
+    @State private var phase: Phase = .idle
     @State private var errorMsg: String?
+
+    @State private var exportInfo: ExportInfo?
+    @State private var localZipURL: URL?
+    @State private var showShareSheet = false
+
+    enum Phase {
+        case idle
+        case packaging      // 后端打 zip 中
+        case downloading    // 后端 zip 已好，下载到手机
+        case ready          // 本地 zip 就位，可分享
+        case failed
+    }
 
     var body: some View {
         ZStack {
             PV.bg.ignoresSafeArea()
             VStack(alignment: .leading, spacing: 16) {
                 header
-                if let result {
-                    successView(info: result)
-                } else {
-                    inputView
+                switch phase {
+                case .idle:           inputView
+                case .packaging:      progressView(step: "打包中", subtitle: "素材多可能要一会儿")
+                case .downloading:    progressView(step: "下载到手机", subtitle: exportInfo.map { "\($0.filename)  ·  \($0.sizeBytes.humanReadableBytes)" } ?? "")
+                case .ready:          successView
+                case .failed:         failedView
                 }
                 Spacer()
                 bottomCTA
@@ -32,23 +45,27 @@ struct ExportSheet: View {
         }
         .presentationDetents([.medium, .large])
         .onAppear {
-            // 填个默认名（当前年月日）方便用户直接点导出
             let df = DateFormatter()
             df.dateFormat = "yyyyMMdd"
             name = "剪辑_\(df.string(from: Date()))"
-            if result == nil { focused = true }
+            if phase == .idle { focused = true }
+        }
+        .sheet(isPresented: $showShareSheet, onDismiss: cleanupLocalZip) {
+            if let url = localZipURL {
+                ActivityView(items: [url])
+            }
         }
     }
 
-    // MARK: - Parts
+    // MARK: - Subviews
 
     private var header: some View {
         HStack {
-            Text(result == nil ? "导出剪辑工程包" : "导出完成")
+            Text(phaseTitle)
                 .font(PVFont.display(22, weight: .medium))
                 .foregroundStyle(PV.ink)
             Spacer()
-            Button { dismiss() } label: {
+            Button { cleanupLocalZip(); dismiss() } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(PV.sub)
@@ -59,14 +76,22 @@ struct ExportSheet: View {
         .padding(.top, 2)
     }
 
+    private var phaseTitle: String {
+        switch phase {
+        case .idle, .failed:  return "导出"
+        case .packaging:      return "打包中…"
+        case .downloading:    return "下载中…"
+        case .ready:          return "可以分享了"
+        }
+    }
+
     private var inputView: some View {
         VStack(alignment: .leading, spacing: 14) {
-            // 素材数预览
             HStack(spacing: 8) {
                 Image(systemName: "photo.stack")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(PV.caramel)
-                Text("将打包 \(assetIds.count) 个素材")
+                Text("\(assetIds.count) 个素材")
                     .font(PVFont.body(13))
                     .foregroundStyle(PV.sub)
             }
@@ -82,11 +107,10 @@ struct ExportSheet: View {
                     .tracking(1.5)
                     .foregroundStyle(PV.muted)
                 TextField("", text: $name, prompt:
-                    Text("例如：剪辑_2026春节").font(PVFont.body(14.5)).foregroundStyle(PV.muted))
+                    Text("剪辑_2026春节").font(PVFont.body(14.5)).foregroundStyle(PV.muted))
                     .font(PVFont.body(15))
                     .tint(PV.caramel)
                     .focused($focused)
-                    .disabled(isExporting)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 12)
                     .background(Color.white)
@@ -97,20 +121,41 @@ struct ExportSheet: View {
                     )
             }
 
-            Text("打包内容：每张原图 + `metadata.json`（文件名/拍摄时间/所属文件夹/备注）— 解压后直接拖进剪辑软件可用。")
+            Text("打包好会弹系统分享，可 AirDrop / 微信 / 存到文件。")
                 .font(PVFont.body(11.5))
                 .foregroundStyle(PV.sub)
-                .lineSpacing(2)
-
-            if let err = errorMsg {
-                Text(err)
-                    .font(PVFont.body(12))
-                    .foregroundStyle(PV.berry)
-            }
         }
     }
 
-    private func successView(info: ExportInfo) -> some View {
+    private func progressView(step: String, subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 12) {
+                ProgressView().tint(PV.caramel).scaleEffect(1.1)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(step)
+                        .font(PVFont.body(14.5, weight: .medium))
+                        .foregroundStyle(PV.ink)
+                    if !subtitle.isEmpty {
+                        Text(subtitle)
+                            .font(PVFont.mono(11))
+                            .foregroundStyle(PV.sub)
+                            .lineLimit(2)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 14)
+            .background(Color.white)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(PV.line, lineWidth: 1)
+            )
+        }
+    }
+
+    private var successView: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 10) {
                 ZStack {
@@ -121,102 +166,137 @@ struct ExportSheet: View {
                 }
                 .frame(width: 34, height: 34)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(info.filename)
+                    Text(exportInfo?.filename ?? "导出完成")
                         .font(PVFont.mono(12.5, weight: .medium))
                         .foregroundStyle(PV.ink)
                         .lineLimit(1)
                         .truncationMode(.middle)
-                    Text("\(info.sizeBytes.humanReadableBytes)\(info.assetCount.map { " · \($0) 个素材" } ?? "")\(info.durationMs.map { " · 耗时 \($0) ms" } ?? "")")
-                        .font(PVFont.mono(11))
-                        .foregroundStyle(PV.sub)
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Mac 服务端路径")
-                    .font(PVFont.sectionHeader)
-                    .tracking(1.5)
-                    .foregroundStyle(PV.muted)
-                HStack {
-                    Text(info.absolutePath)
-                        .font(PVFont.mono(11.5))
-                        .foregroundStyle(PV.caramel)
-                        .lineLimit(2)
-                        .truncationMode(.middle)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Button {
-                        UIPasteboard.general.string = info.absolutePath
-                    } label: {
-                        Image(systemName: "doc.on.doc")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(PV.caramel)
-                            .padding(6)
-                            .background(PV.caramel.opacity(0.1), in: Circle())
+                    if let info = exportInfo {
+                        Text("\(info.sizeBytes.humanReadableBytes)\(info.assetCount.map { " · \($0) 个素材" } ?? "")")
+                            .font(PVFont.mono(11))
+                            .foregroundStyle(PV.sub)
                     }
-                    .buttonStyle(.plain)
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(PV.caramel.opacity(0.09))
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
+            .background(Color.white)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(PV.line, lineWidth: 1)
+            )
 
-            Text("在 Mac 上：在 Finder 用 ⌘⇧G 粘贴上面的路径即可定位；也可通过 \(info.downloadPath) 浏览器下载。")
-                .font(PVFont.body(11.5))
-                .foregroundStyle(PV.sub)
-                .lineSpacing(2)
+        }
+    }
+
+    private var failedView: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 18))
+                    .foregroundStyle(PV.berry)
+                Text(errorMsg ?? "导出失败")
+                    .font(PVFont.body(13))
+                    .foregroundStyle(PV.berry)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(PV.berry.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
     }
 
     private var bottomCTA: some View {
         Group {
-            if result == nil {
+            switch phase {
+            case .idle, .failed:
                 Button {
-                    Task { await doExport() }
+                    Task { await runPipeline() }
                 } label: {
                     HStack(spacing: 8) {
-                        if isExporting {
-                            ProgressView().tint(.white)
-                            Text("正在打包… (GB 级文件可能耗时数分钟)")
-                                .font(PVFont.body(13, weight: .medium))
-                        } else {
-                            Image(systemName: "shippingbox.fill")
-                            Text("开始导出")
-                        }
+                        Image(systemName: "shippingbox.fill")
+                        Text(phase == .failed ? "重试" : "开始")
                     }
                 }
                 .buttonStyle(CButtonStyle(tone: PV.caramel, filled: true, height: 48))
-                .disabled(isExporting || assetIds.isEmpty)
-            } else {
+                .disabled(assetIds.isEmpty)
+
+            case .packaging, .downloading:
+                Button {} label: {
+                    HStack(spacing: 8) {
+                        ProgressView().tint(.white)
+                        Text("请稍候").font(PVFont.body(14, weight: .medium))
+                    }
+                }
+                .buttonStyle(CButtonStyle(tone: PV.caramel, filled: true, height: 48))
+                .disabled(true)
+                .opacity(0.7)
+
+            case .ready:
                 Button {
-                    dismiss()
+                    showShareSheet = true
+                    PVLog.upload("export[share-sheet] 打开系统分享")
                 } label: {
-                    Text("完成")
+                    HStack(spacing: 8) {
+                        Image(systemName: "square.and.arrow.up.fill")
+                        Text("分享")
+                    }
                 }
                 .buttonStyle(CButtonStyle(tone: PV.caramel, filled: true, height: 48))
             }
         }
     }
 
-    // MARK: - Actions
+    // MARK: - Pipeline
 
-    private func doExport() async {
+    private func runPipeline() async {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        isExporting = true
-        errorMsg = nil
-        defer { isExporting = false }
+        PVLog.upload("export[tap] assetIds=\(assetIds.count) name=\(trimmed.isEmpty ? "(默认)" : trimmed)")
 
-        PVLog.upload("export[tap] 开始打包 assetIds=\(assetIds.count) name=\(trimmed.isEmpty ? "(默认)" : trimmed)")
+        // 1. 打包
+        phase = .packaging
+        errorMsg = nil
+        let info: ExportInfo
         do {
-            let info = try await api.createExport(
+            info = try await api.createExport(
                 assetIds: assetIds,
                 name: trimmed.isEmpty ? nil : trimmed
             )
-            result = info
-            PVLog.upload("export[done] \(info.filename) size=\(info.sizeBytes.humanReadableBytes) \(info.durationMs ?? 0)ms")
+            exportInfo = info
+            PVLog.upload("export[packaged] \(info.filename) size=\(info.sizeBytes.humanReadableBytes) backendMs=\(info.durationMs ?? 0)")
         } catch {
-            errorMsg = "导出失败: \(error.localizedDescription)"
-            PVLog.uploadError("export[fail] \(error.localizedDescription)")
+            phase = .failed
+            errorMsg = "打包失败: \(error.localizedDescription)"
+            PVLog.uploadError("export[package-fail] \(error.localizedDescription)")
+            return
+        }
+
+        // 2. 下载到手机 tmp
+        phase = .downloading
+        do {
+            let t0 = Date()
+            let local = try await api.downloadExport(info: info)
+            let ms = Int(Date().timeIntervalSince(t0) * 1000)
+            localZipURL = local
+            PVLog.upload("export[downloaded] \(info.filename) → \(local.lastPathComponent) \(ms)ms")
+        } catch {
+            phase = .failed
+            errorMsg = "下载到手机失败: \(error.localizedDescription)"
+            PVLog.uploadError("export[download-fail] \(error.localizedDescription)")
+            return
+        }
+
+        // 3. 就绪 —— 等用户点"分享工程包"
+        phase = .ready
+    }
+
+    /// 分享完（或用户取消 ExportSheet）清掉本地 tmp zip
+    private func cleanupLocalZip() {
+        if let url = localZipURL {
+            try? FileManager.default.removeItem(at: url)
+            localZipURL = nil
+            PVLog.upload("export[cleanup] 本地 zip 已删")
         }
     }
 }
