@@ -236,6 +236,7 @@ struct CTabBar: View {
                         RoundedRectangle(cornerRadius: 18, style: .continuous)
                             .fill(active ? PV.caramel : Color.clear)
                     )
+                    .contentShape(Rectangle()) // 让整个 tab 区域可点，不只是图标/文字
                 }
                 .buttonStyle(.plain)
             }

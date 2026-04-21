@@ -378,6 +378,7 @@ private struct CreamSegmented: View {
                                 .fill(on ? Color.white : Color.clear)
                                 .shadow(color: on ? PV.bean.opacity(0.06) : .clear, radius: 2, y: 1)
                         )
+                        .contentShape(Rectangle()) // 让整个 segment 区域都能点击，不只是文字
                 }
                 .buttonStyle(.plain)
             }
