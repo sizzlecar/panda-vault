@@ -360,6 +360,7 @@ struct SettingsView: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 11)
+            .contentShape(Rectangle()) // 让整行包括 Spacer 中间空白都可点
         }
         .buttonStyle(.plain)
     }
